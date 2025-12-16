@@ -1,4 +1,4 @@
-import { initializeApp } from "https://www.gstatic.com/firebasejs/11.2.0/firebase-app.js";
+import { initializeApp } from "firebase/app";
 import { 
   getFirestore, 
   collection, 
@@ -10,13 +10,13 @@ import {
   query,
   orderBy,
   writeBatch
-} from "https://www.gstatic.com/firebasejs/11.2.0/firebase-firestore.js";
+} from "firebase/firestore";
 import { 
   getAuth, 
   signInWithEmailAndPassword,
   signOut, 
   onAuthStateChanged 
-} from "https://www.gstatic.com/firebasejs/11.2.0/firebase-auth.js";
+} from "firebase/auth";
 
 // --- CONFIGURATION ---
 const firebaseConfig = {
@@ -35,6 +35,7 @@ let auth: any;
 let isConfigured = false;
 
 try {
+  // Simple check to ensure we aren't using the placeholder in production
   if (firebaseConfig.apiKey !== "YOUR_API_KEY_HERE") {
     app = initializeApp(firebaseConfig);
     db = getFirestore(app);

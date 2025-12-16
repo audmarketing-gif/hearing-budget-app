@@ -1,14 +1,13 @@
 import { GoogleGenAI } from "@google/genai";
 import { Transaction, Budget } from "../types";
 
-const apiKey = process.env.API_KEY || '';
-const ai = new GoogleGenAI({ apiKey });
+const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
 export const getFinancialAdvice = async (
   transactions: Transaction[],
   budgets: Budget[]
 ): Promise<string> => {
-  if (!apiKey) {
+  if (!process.env.API_KEY) {
     return "AI insights are unavailable. Please configure your API Key.";
   }
 
