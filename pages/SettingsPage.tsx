@@ -1,0 +1,253 @@
+import React, { useState } from 'react';
+import { Category, Transaction, Budget, TransactionType } from '../types';
+import { Download, Trash2, Plus, Edit2, Check, X, FolderCog, FileSpreadsheet, LogOut, UserCircle } from 'lucide-react';
+import { signOut, auth } from '../services/firebase';
+
+interface SettingsPageProps {
+  categories: Category[];
+  transactions: Transaction[];
+  budgets: Budget[];
+  onAddCategory: (name: string, type: TransactionType, color?: string) => void;
+  onDeleteCategory: (id: string) => void;
+  onEditCategory: (id: string, name: string, color?: string) => void;
+}
+
+const SettingsPage: React.FC<SettingsPageProps> = ({ 
+  categories, 
+  transactions, 
+  budgets,
+  onAddCategory,
+  onDeleteCategory,
+  onEditCategory
+}) => {
+  const [newCatName, setNewCatName] = useState('');
+  const [newCatType, setNewCatType] = useState<TransactionType>('expense');
+  const [newCatColor, setNewCatColor] = useState('#64748b');
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editName, setEditName] = useState('');
+  const [editColor, setEditColor] = useState('');
+
+  const handleAdd = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (newCatName.trim()) {
+      onAddCategory(newCatName.trim(), newCatType, newCatColor);
+      setNewCatName('');
+      setNewCatColor('#64748b'); // reset to default
+    }
+  };
+
+  const startEditing = (cat: Category) => {
+    setEditingId(cat.id);
+    setEditName(cat.name);
+    setEditColor(cat.color || '#64748b');
+  };
+
+  const saveEdit = (id: string) => {
+    if (editName.trim()) {
+      onEditCategory(id, editName.trim(), editColor);
+    }
+    setEditingId(null);
+  };
+
+  const handleExport = () => {
+    const headers = ["Date", "Description", "Category", "Amount", "Type"];
+    const rows = transactions.map(t => [
+      t.date,
+      `"${t.description.replace(/"/g, '""')}"`, // Escape quotes
+      t.category,
+      t.amount.toFixed(2),
+      t.type
+    ]);
+
+    const csvContent = "data:text/csv;charset=utf-8," 
+      + headers.join(",") + "\n" 
+      + rows.map(e => e.join(",")).join("\n");
+
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement("a");
+    link.setAttribute("href", encodedUri);
+    link.setAttribute("download", `visioncare_export_${new Date().toISOString().slice(0, 10)}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  const handleSignOut = async () => {
+    try {
+      await signOut(auth);
+    } catch (error) {
+      console.error("Error signing out:", error);
+    }
+  };
+
+  // Extract username from email
+  const userEmail = auth?.currentUser?.email || '';
+  const userName = userEmail.split('@')[0];
+
+  return (
+    <div className="space-y-8">
+      <div className="flex justify-between items-center">
+        <h1 className="text-2xl font-bold text-stone-800">Settings</h1>
+        <button 
+          onClick={handleSignOut}
+          className="flex items-center px-4 py-2 text-rose-600 bg-rose-50 hover:bg-rose-100 rounded-lg transition-colors text-sm font-bold"
+        >
+          <LogOut size={16} className="mr-2" />
+          Sign Out
+        </button>
+      </div>
+
+      {/* Account Info */}
+      <div className="bg-white p-6 rounded-xl shadow-sm border border-stone-100">
+         <div className="flex items-center mb-4">
+           <UserCircle className="text-blue-900 mr-2" />
+           <h2 className="text-lg font-bold text-stone-800">Account</h2>
+         </div>
+         <p className="text-sm text-stone-500">You are currently logged in as:</p>
+         <p className="font-bold text-stone-800 mt-1">{userName}</p>
+      </div>
+
+      {/* Category Management */}
+      <div className="bg-white p-6 rounded-xl shadow-sm border border-stone-100">
+        <div className="flex items-center mb-6">
+          <FolderCog className="text-emerald-600 mr-2" />
+          <h2 className="text-lg font-bold text-stone-800">Manage Categories</h2>
+        </div>
+
+        {/* Add Form */}
+        <form onSubmit={handleAdd} className="flex flex-col md:flex-row gap-4 mb-6 p-4 bg-stone-50 rounded-lg">
+          <input 
+            type="text" 
+            placeholder="New Category Name" 
+            value={newCatName}
+            onChange={(e) => setNewCatName(e.target.value)}
+            className="flex-1 px-3 py-2 border border-stone-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/20 bg-white text-stone-800 placeholder-stone-400"
+          />
+          <div className="flex items-center space-x-2">
+            <input 
+              type="color"
+              value={newCatColor}
+              onChange={(e) => setNewCatColor(e.target.value)}
+              className="h-9 w-12 p-0 border-0 rounded overflow-hidden cursor-pointer"
+              title="Pick Category Color"
+            />
+            <select
+              value={newCatType}
+              onChange={(e) => setNewCatType(e.target.value as TransactionType)}
+              className="px-3 py-2 border border-stone-200 rounded-lg text-sm bg-white text-stone-800 focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
+            >
+              <option value="expense">Expense</option>
+              <option value="income">Income</option>
+            </select>
+            <button 
+              type="submit"
+              className="bg-emerald-600 text-white px-4 py-2 rounded-lg hover:bg-emerald-700 transition-colors flex items-center justify-center min-w-[3rem]"
+            >
+              <Plus size={16} />
+            </button>
+          </div>
+        </form>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+          {/* Expenses */}
+          <div>
+            <h3 className="text-sm font-bold text-rose-500 uppercase tracking-wider mb-3">Expenses</h3>
+            <ul className="space-y-2">
+              {categories.filter(c => c.type === 'expense').map(cat => (
+                <li key={cat.id} className="flex justify-between items-center p-3 bg-stone-50 rounded-lg border border-stone-100">
+                  {editingId === cat.id ? (
+                    <div className="flex flex-1 gap-2 items-center">
+                       <input 
+                        value={editName}
+                        onChange={(e) => setEditName(e.target.value)}
+                        className="flex-1 px-2 py-1 text-sm border rounded bg-white text-stone-800"
+                        autoFocus
+                       />
+                       <input 
+                        type="color"
+                        value={editColor}
+                        onChange={(e) => setEditColor(e.target.value)}
+                        className="h-6 w-8 p-0 border-0 rounded cursor-pointer"
+                       />
+                       <button onClick={() => saveEdit(cat.id)} className="text-emerald-600"><Check size={16} /></button>
+                       <button onClick={() => setEditingId(null)} className="text-stone-400"><X size={16} /></button>
+                    </div>
+                  ) : (
+                    <>
+                      <div className="flex items-center space-x-2">
+                        <div className="w-3 h-3 rounded-full" style={{ backgroundColor: cat.color }}></div>
+                        <span className="text-stone-800 text-sm font-medium">{cat.name}</span>
+                      </div>
+                      <div className="flex gap-2">
+                        <button onClick={() => startEditing(cat)} className="text-stone-400 hover:text-emerald-600"><Edit2 size={14} /></button>
+                        <button onClick={() => onDeleteCategory(cat.id)} className="text-stone-400 hover:text-rose-500"><Trash2 size={14} /></button>
+                      </div>
+                    </>
+                  )}
+                </li>
+              ))}
+            </ul>
+          </div>
+
+          {/* Income */}
+          <div>
+            <h3 className="text-sm font-bold text-emerald-600 uppercase tracking-wider mb-3">Income / Funding</h3>
+            <ul className="space-y-2">
+              {categories.filter(c => c.type === 'income').map(cat => (
+                <li key={cat.id} className="flex justify-between items-center p-3 bg-stone-50 rounded-lg border border-stone-100">
+                  {editingId === cat.id ? (
+                    <div className="flex flex-1 gap-2 items-center">
+                       <input 
+                        value={editName}
+                        onChange={(e) => setEditName(e.target.value)}
+                        className="flex-1 px-2 py-1 text-sm border rounded bg-white text-stone-800"
+                        autoFocus
+                       />
+                        <input 
+                        type="color"
+                        value={editColor}
+                        onChange={(e) => setEditColor(e.target.value)}
+                        className="h-6 w-8 p-0 border-0 rounded cursor-pointer"
+                       />
+                       <button onClick={() => saveEdit(cat.id)} className="text-emerald-600"><Check size={16} /></button>
+                       <button onClick={() => setEditingId(null)} className="text-stone-400"><X size={16} /></button>
+                    </div>
+                  ) : (
+                    <>
+                      <div className="flex items-center space-x-2">
+                        <div className="w-3 h-3 rounded-full" style={{ backgroundColor: cat.color }}></div>
+                        <span className="text-stone-800 text-sm font-medium">{cat.name}</span>
+                      </div>
+                      <div className="flex gap-2">
+                         <button onClick={() => startEditing(cat)} className="text-stone-400 hover:text-emerald-600"><Edit2 size={14} /></button>
+                        <button onClick={() => onDeleteCategory(cat.id)} className="text-stone-400 hover:text-rose-500"><Trash2 size={14} /></button>
+                      </div>
+                    </>
+                  )}
+                </li>
+              ))}
+            </ul>
+          </div>
+        </div>
+      </div>
+
+      {/* Data Management */}
+      <div className="bg-white p-6 rounded-xl shadow-sm border border-stone-100">
+         <div className="flex items-center mb-4">
+           <FileSpreadsheet className="text-emerald-600 mr-2" />
+           <h2 className="text-lg font-bold text-stone-800">Data Export</h2>
+         </div>
+         <p className="text-sm text-stone-500 mb-4">Download all your transaction history as a CSV file for external analysis.</p>
+         <button 
+           onClick={handleExport}
+           className="flex items-center px-4 py-2 bg-stone-800 text-white rounded-lg hover:bg-stone-900 transition-colors"
+         >
+           <Download size={18} className="mr-2" />
+           Export CSV
+         </button>
+      </div>
+    </div>
+  );
+};
+
+export default SettingsPage;
