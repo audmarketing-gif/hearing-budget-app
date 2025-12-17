@@ -19,7 +19,7 @@ export const getFinancialAdvice = async (
     }, {} as Record<string, number>);
 
   const incomeSummary = transactions
-    .filter(t => t.type === 'income')
+    .filter(t => t.type === 'allocation')
     .reduce((acc, curr) => {
       acc[curr.category] = (acc[curr.category] || 0) + curr.amount;
       return acc;

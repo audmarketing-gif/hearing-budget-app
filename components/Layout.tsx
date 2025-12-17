@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { LayoutDashboard, Receipt, PieChart, Landmark, Menu, X, Briefcase, Archive, Settings, Bell, Search, UserCircle } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import { LayoutDashboard, Receipt, PieChart, Landmark, Menu, X, Settings, Bell, Search, UserCircle, Wallet, CalendarClock } from 'lucide-react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { Notification } from '../types';
 
@@ -37,11 +37,34 @@ const Layout: React.FC<LayoutProps> = ({ children, notifications, onClearNotific
   const location = useLocation();
   const navigate = useNavigate();
 
+  // Toast State
+  const [activeToasts, setActiveToasts] = useState<Notification[]>([]);
+  const processedRef = useRef<Set<string>>(new Set());
+
+  useEffect(() => {
+    // Filter for new critical alerts (Allocations within 3 days)
+    const newAlerts = notifications.filter(n => {
+      // Check if it's an allocation alert or budget warning
+      const isImportant = n.message.includes('Allocation') || n.message.includes('💰') || n.type === 'warning';
+      return isImportant && !processedRef.current.has(n.id);
+    });
+
+    if (newAlerts.length > 0) {
+      // Mark as processed so they don't pop up again this session
+      newAlerts.forEach(n => processedRef.current.add(n.id));
+      // Add to active toasts
+      setActiveToasts(prev => [...prev, ...newAlerts]);
+    }
+  }, [notifications]);
+
+  const removeToast = (id: string) => {
+    setActiveToasts(prev => prev.filter(t => t.id !== id));
+  };
+
   const navItems = [
     { name: 'Dashboard', path: '/', icon: <LayoutDashboard size={20} /> },
+    { name: 'Budget', path: '/budgets', icon: <Landmark size={20} /> },
     { name: 'Transactions', path: '/transactions', icon: <Receipt size={20} /> },
-    { name: 'Budgets', path: '/budgets', icon: <Landmark size={20} /> },
-    { name: 'Reserved Funds', path: '/savings', icon: <Archive size={20} /> },
     { name: 'Insights', path: '/insights', icon: <PieChart size={20} /> },
     { name: 'Settings', path: '/settings', icon: <Settings size={20} /> },
   ];
@@ -63,6 +86,33 @@ const Layout: React.FC<LayoutProps> = ({ children, notifications, onClearNotific
 
   return (
     <div className="flex h-screen bg-stone-50 overflow-hidden">
+      {/* Toast Container - Fixed Bottom Right */}
+      <div className="fixed bottom-6 right-6 z-50 flex flex-col items-end space-y-3 pointer-events-none">
+        {activeToasts.map(toast => (
+          <div 
+            key={toast.id} 
+            className="pointer-events-auto bg-white border-l-4 border-emerald-500 rounded-lg shadow-xl p-4 max-w-sm w-full flex items-start animate-[slideIn_0.3s_ease-out] transition-all"
+            role="alert"
+          >
+            <div className={`p-2 rounded-full mr-3 shrink-0 ${toast.type === 'warning' ? 'bg-rose-100 text-rose-600' : 'bg-emerald-100 text-emerald-600'}`}>
+               {toast.type === 'warning' ? <CalendarClock size={20} /> : <Wallet size={20} />}
+            </div>
+            <div className="flex-1 mr-2">
+              <h4 className="text-sm font-bold text-stone-800">
+                {toast.message.includes('Allocation') ? 'Incoming Allocation' : 'Alert'}
+              </h4>
+              <p className="text-xs text-stone-600 mt-1 leading-relaxed">{toast.message}</p>
+            </div>
+            <button 
+              onClick={() => removeToast(toast.id)} 
+              className="text-stone-400 hover:text-stone-600 transition-colors p-1"
+            >
+              <X size={16} />
+            </button>
+          </div>
+        ))}
+      </div>
+
       {/* Mobile Sidebar Overlay */}
       {isSidebarOpen && (
         <div 
@@ -203,6 +253,12 @@ const Layout: React.FC<LayoutProps> = ({ children, notifications, onClearNotific
           </div>
         </main>
       </div>
+      <style>{`
+        @keyframes slideIn {
+          from { transform: translateX(100%); opacity: 0; }
+          to { transform: translateX(0); opacity: 1; }
+        }
+      `}</style>
     </div>
   );
 };

@@ -51,7 +51,7 @@ const Auth: React.FC = () => {
         <BrandLogo />
         
         <h2 className="text-center text-xl font-bold text-stone-800 mb-2">
-          Team Portal Access
+          Hearing Team Portal Access
         </h2>
         <p className="text-center text-sm text-stone-500 mb-6">
           Enter your credentials to manage the budget.

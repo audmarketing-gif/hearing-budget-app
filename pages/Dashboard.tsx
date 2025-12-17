@@ -1,32 +1,69 @@
-import React from 'react';
-import { Transaction, Budget, Category } from '../types';
+import React, { useState, useEffect } from 'react';
+import { Transaction, Budget, Category, BudgetSource } from '../types';
 import StatsCards from '../components/StatsCards';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts';
 
 interface DashboardProps {
   transactions: Transaction[];
-  budgets: Budget[];
+  budgets: Budget[]; // Used for charts
   categories?: Category[];
+  budgetSources: BudgetSource[];
 }
 
-const Dashboard: React.FC<DashboardProps> = ({ transactions, budgets, categories = [] }) => {
-  const totalIncome = transactions
-    .filter(t => t.type === 'income')
-    .reduce((sum, t) => sum + t.amount, 0);
+const Dashboard: React.FC<DashboardProps> = ({ transactions, budgets, categories = [], budgetSources }) => {
+  const [isMounted, setIsMounted] = useState(false);
 
-  const totalExpenses = transactions
-    .filter(t => t.type === 'expense')
-    .reduce((sum, t) => sum + t.amount, 0);
+  useEffect(() => {
+    setIsMounted(true);
+  }, []);
 
-  const balance = totalIncome - totalExpenses;
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
 
-  // Prepare Pie Chart Data
-  const expensesByCategory = transactions
-    .filter(t => t.type === 'expense')
-    .reduce((acc, t) => {
+  // 1. Total Budget = Sum of Budget Sources (Primary + Grants)
+  const totalBudget = budgetSources.reduce((sum, src) => sum + src.amount, 0);
+
+  // 2. Total Spend = Expenses + Expired Allocations
+  // Expired Allocation: Type is 'allocation' AND date <= today
+  const totalSpend = transactions.reduce((sum, t) => {
+    const tDate = new Date(t.date);
+    tDate.setHours(0, 0, 0, 0);
+    
+    if (t.type === 'expense') {
+      return sum + t.amount;
+    } else if (t.type === 'allocation' && tDate <= today) {
+      // It's an expired allocation, count as spend
+      return sum + t.amount;
+    }
+    return sum;
+  }, 0);
+
+  // 3. Total Allocations = Active Allocations (Future)
+  const totalAllocations = transactions.reduce((sum, t) => {
+    const tDate = new Date(t.date);
+    tDate.setHours(0, 0, 0, 0);
+    
+    if (t.type === 'allocation' && tDate > today) {
+      return sum + t.amount;
+    }
+    return sum;
+  }, 0);
+
+  // 4. Remain Budget
+  const remainBudget = totalBudget - totalSpend - totalAllocations;
+
+  // Prepare Pie Chart Data (Spend Breakdown)
+  // We consider Expenses and Expired Allocations as "Spend" for the chart
+  const expensesByCategory = transactions.reduce((acc, t) => {
+    const tDate = new Date(t.date);
+    tDate.setHours(0, 0, 0, 0);
+    const isSpend = t.type === 'expense' || (t.type === 'allocation' && tDate <= today);
+
+    if (isSpend) {
       acc[t.category] = (acc[t.category] || 0) + t.amount;
-      return acc;
-    }, {} as Record<string, number>);
+    }
+    return acc;
+  }, {} as Record<string, number>);
 
   const pieData = Object.entries(expensesByCategory).map(([name, value]) => ({ name, value: Number(value) }));
   
@@ -49,7 +86,12 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions, budgets, categories
         </div>
       </div>
 
-      <StatsCards income={totalIncome} expenses={totalExpenses} balance={balance} />
+      <StatsCards 
+        totalBudget={totalBudget} 
+        totalSpend={totalSpend} 
+        totalAllocations={totalAllocations} 
+        remainBudget={remainBudget} 
+      />
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Recent Activity */}
@@ -58,24 +100,32 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions, budgets, categories
           <div className="space-y-4">
             {recentTransactions.map(t => {
                const cat = categories.find(c => c.name === t.category);
-               const catColor = cat ? cat.color : '#a8a29e'; // stone-400 default
+               const catColor = cat ? cat.color : '#a8a29e';
+               const tDate = new Date(t.date);
+               tDate.setHours(0,0,0,0);
+               const isExpiredAllocation = t.type === 'allocation' && tDate <= today;
+               const isFutureAllocation = t.type === 'allocation' && tDate > today;
 
                return (
                 <div key={t.id} className="flex items-center justify-between p-3 hover:bg-stone-50 rounded-lg transition-colors">
                   <div className="flex items-center">
                     <div 
                       className={`w-10 h-10 rounded-full flex items-center justify-center text-white font-bold`}
-                      style={{ backgroundColor: t.type === 'income' ? '#10b981' : catColor }}
+                      style={{ backgroundColor: isFutureAllocation ? '#3b82f6' : catColor }}
                     >
                       {t.category.charAt(0)}
                     </div>
                     <div className="ml-4">
                       <p className="text-sm font-bold text-stone-800">{t.description}</p>
-                      <p className="text-xs text-stone-500">{t.date} • {t.category}</p>
+                      <p className="text-xs text-stone-500">
+                        {t.date} • {t.category} 
+                        {isFutureAllocation && <span className="ml-2 text-blue-600 font-bold">(Allocated)</span>}
+                        {isExpiredAllocation && <span className="ml-2 text-stone-400 italic">(Expired Alloc)</span>}
+                      </p>
                     </div>
                   </div>
-                  <span className={`font-bold ${t.type === 'income' ? 'text-emerald-600' : 'text-stone-800'}`}>
-                    {t.type === 'income' ? '+' : '-'}LKR {t.amount.toLocaleString()}
+                  <span className={`font-bold ${isFutureAllocation ? 'text-blue-600' : 'text-stone-800'}`}>
+                    LKR {t.amount.toLocaleString()}
                   </span>
                 </div>
               );
@@ -87,32 +137,35 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions, budgets, categories
         </div>
 
         {/* Expense Breakdown */}
-        <div className="bg-white p-6 rounded-xl shadow-sm border border-stone-100 min-w-0">
+        <div className="bg-white p-6 rounded-xl shadow-sm border border-stone-100 min-w-0" role="region" aria-label="Spending Breakdown Chart">
           <h2 className="text-lg font-bold text-stone-800 mb-4">Spend by Channel</h2>
           <div className="h-64 w-full relative">
              {pieData.length > 0 ? (
                 <div className="absolute inset-0">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <PieChart>
-                      <Pie
-                        data={pieData}
-                        cx="50%"
-                        cy="50%"
-                        innerRadius={60}
-                        outerRadius={80}
-                        paddingAngle={5}
-                        dataKey="value"
-                      >
-                        {pieData.map((entry, index) => (
-                          <Cell key={`cell-${index}`} fill={getCategoryColor(entry.name, index)} />
-                        ))}
-                      </Pie>
-                      <Tooltip 
-                        formatter={(value: any) => [`LKR ${Number(value).toFixed(2)}`, 'Spend']}
-                        contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
-                      />
-                    </PieChart>
-                  </ResponsiveContainer>
+                  {isMounted && (
+                    <ResponsiveContainer width="100%" height="100%">
+                      <PieChart>
+                        <Pie
+                          data={pieData}
+                          cx="50%"
+                          cy="50%"
+                          innerRadius={60}
+                          outerRadius={80}
+                          paddingAngle={5}
+                          dataKey="value"
+                          nameKey="name"
+                        >
+                          {pieData.map((entry, index) => (
+                            <Cell key={`cell-${index}`} fill={getCategoryColor(entry.name, index)} aria-label={`${entry.name}: ${entry.value}`} />
+                          ))}
+                        </Pie>
+                        <Tooltip 
+                          formatter={(value: any) => [`LKR ${Number(value).toFixed(2)}`, 'Spend']}
+                          contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
+                        />
+                      </PieChart>
+                    </ResponsiveContainer>
+                  )}
                 </div>
              ) : (
                 <div className="flex h-full items-center justify-center text-stone-400 text-sm">
@@ -120,7 +173,7 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions, budgets, categories
                 </div>
              )}
           </div>
-          <div className="mt-4 space-y-2">
+          <div className="mt-4 space-y-2 max-h-40 overflow-y-auto">
              {pieData.map((entry, index) => (
                <div key={entry.name} className="flex items-center justify-between text-sm">
                  <div className="flex items-center">

@@ -12,11 +12,14 @@ const TransactionForm: React.FC<TransactionFormProps> = ({ onAdd, categories }) 
   const [amount, setAmount] = useState('');
   const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
   const [type, setType] = useState<TransactionType>('expense');
+  const [company, setCompany] = useState('');
+  const [invoiceNo, setInvoiceNo] = useState('');
+  const [poNo, setPoNo] = useState('');
   const [showSuccess, setShowSuccess] = useState(false);
   
   // Initialize category based on available categories for the type
   const expenseCats = categories.filter(c => c.type === 'expense');
-  const incomeCats = categories.filter(c => c.type === 'income');
+  const allocCats = categories.filter(c => c.type === 'allocation');
   
   const [category, setCategory] = useState(expenseCats.length > 0 ? expenseCats[0].name : '');
 
@@ -30,17 +33,23 @@ const TransactionForm: React.FC<TransactionFormProps> = ({ onAdd, categories }) 
       date,
       type,
       category,
+      company,
+      invoiceNo,
+      poNo
     });
 
     setDescription('');
     setAmount('');
+    setCompany('');
+    setInvoiceNo('');
+    setPoNo('');
     setShowSuccess(true);
     setTimeout(() => setShowSuccess(false), 2000);
   };
 
   const handleTypeChange = (newType: TransactionType) => {
     setType(newType);
-    const availableCats = newType === 'expense' ? expenseCats : incomeCats;
+    const availableCats = newType === 'expense' ? expenseCats : allocCats;
     if (availableCats.length > 0) {
       setCategory(availableCats[0].name);
     } else {
@@ -81,18 +90,18 @@ const TransactionForm: React.FC<TransactionFormProps> = ({ onAdd, categories }) 
                 : 'bg-stone-50 text-stone-600 hover:bg-stone-100'
             }`}
           >
-            Spend / Bill
+            Spend
           </button>
           <button
             type="button"
-            onClick={() => handleTypeChange('income')}
+            onClick={() => handleTypeChange('allocation')}
             className={`flex-1 py-2 px-4 rounded-lg text-sm font-medium transition-colors ${
-              type === 'income' 
+              type === 'allocation' 
                 ? 'bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200' 
                 : 'bg-stone-50 text-stone-600 hover:bg-stone-100'
             }`}
           >
-            Funding / Allocation
+            Allocation
           </button>
         </div>
 
@@ -104,7 +113,7 @@ const TransactionForm: React.FC<TransactionFormProps> = ({ onAdd, categories }) 
               required
               value={description}
               onChange={(e) => setDescription(e.target.value)}
-              placeholder={type === 'expense' ? "e.g. Google Ads Invoice" : "e.g. Q4 Budget"}
+              placeholder={type === 'expense' ? "e.g. Google Ads Invoice" : "e.g. Q4 Marketing Fund"}
               className="w-full px-3 py-2 border border-stone-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 bg-white text-stone-800 placeholder-stone-500"
             />
           </div>
@@ -146,6 +155,39 @@ const TransactionForm: React.FC<TransactionFormProps> = ({ onAdd, categories }) 
                 <option value="">No categories</option>
               )}
             </select>
+          </div>
+          
+          <div className="md:col-span-2 grid grid-cols-3 gap-4 border-t border-stone-100 pt-4 mt-2">
+             <div className="col-span-1">
+                <label className="block text-xs font-semibold text-stone-600 uppercase mb-1">Company Name</label>
+                <input
+                  type="text"
+                  value={company}
+                  onChange={(e) => setCompany(e.target.value)}
+                  placeholder="e.g. Ogilvy"
+                  className="w-full px-3 py-2 border border-stone-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 bg-white text-stone-800 placeholder-stone-400 text-sm"
+                />
+             </div>
+             <div className="col-span-1">
+                <label className="block text-xs font-semibold text-stone-600 uppercase mb-1">Invoice No</label>
+                <input
+                  type="text"
+                  value={invoiceNo}
+                  onChange={(e) => setInvoiceNo(e.target.value)}
+                  placeholder="e.g. INV-2025-001"
+                  className="w-full px-3 py-2 border border-stone-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 bg-white text-stone-800 placeholder-stone-400 text-sm"
+                />
+             </div>
+             <div className="col-span-1">
+                <label className="block text-xs font-semibold text-stone-600 uppercase mb-1">PO No</label>
+                <input
+                  type="text"
+                  value={poNo}
+                  onChange={(e) => setPoNo(e.target.value)}
+                  placeholder="e.g. PO-8839"
+                  className="w-full px-3 py-2 border border-stone-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 bg-white text-stone-800 placeholder-stone-400 text-sm"
+                />
+             </div>
           </div>
         </div>
 

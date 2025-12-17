@@ -1,9 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import ReactDOM from 'react-dom/client';
 import { HashRouter, Routes, Route, Navigate } from 'react-router-dom';
 import Layout from './components/Layout';
 import Auth from './components/Auth';
-import { Transaction, Budget, RecurringTransaction, SavingsGoal, Category, Notification, INITIAL_CATEGORIES, TransactionType } from './types';
+import { Transaction, Budget, RecurringTransaction, Category, Notification, INITIAL_CATEGORIES, BudgetSource } from './types';
 import { 
   db, 
   auth, 
@@ -23,21 +22,16 @@ import Dashboard from './pages/Dashboard';
 import TransactionsPage from './pages/TransactionsPage';
 import BudgetsPage from './pages/BudgetsPage';
 import InsightsPage from './pages/InsightsPage';
-import SavingsPage from './pages/SavingsPage';
 import SettingsPage from './pages/SettingsPage';
-import { Loader2, Database, ShieldAlert } from 'lucide-react';
+import { Loader2, Database } from 'lucide-react';
 
-// Initial Mock Data (Moved inside for seeding)
 const INITIAL_TRANSACTIONS: any[] = [
-  { date: '2025-01-01', description: 'Q1 Marketing Allocation', amount: 15000000, category: 'Quarterly Budget', type: 'income' },
-  { date: '2025-04-01', description: 'Q2 Marketing Allocation', amount: 20000000, category: 'Quarterly Budget', type: 'income' },
-  { date: '2025-01-15', description: 'Ogilvy Digital (Pvt) Ltd - Jan', amount: 230625.00, category: 'Business Promotion & Advertising', type: 'expense' },
-  { date: '2025-01-20', description: 'Roar AD X (PVT) LTD - Jan', amount: 777383.48, category: 'Business Promotion & Advertising', type: 'expense' },
-  { date: '2025-02-10', description: 'CORLHNS Sri Lanka', amount: 1200000.00, category: 'Business Promotion & Advertising', type: 'expense' },
-  { date: '2025-02-15', description: 'Ogilvy Digital (Pvt) Ltd - Feb', amount: 5830097.37, category: 'Business Promotion & Advertising', type: 'expense' },
+  { date: '2025-01-15', description: 'Ogilvy Digital - Jan Retainer', amount: 230625.00, category: 'Business Promotion & Advertising', type: 'expense', company: 'Ogilvy', invoiceNo: 'INV-001' },
+  { date: '2025-01-20', description: 'Roar AD X - Jan', amount: 777383.48, category: 'Business Promotion & Advertising', type: 'expense', company: 'Roar' },
+  { date: '2025-02-15', description: 'Ogilvy Digital - Feb', amount: 5830097.37, category: 'Business Promotion & Advertising', type: 'expense' },
 ];
 
-const INITIAL_BUDGETS: Budget[] = [
+const INITIAL_BUDGET_LIMITS: Budget[] = [
   { category: 'Business Promotion & Advertising', limit: 6000000, rollover: true },
   { category: 'Other Marketing Expense', limit: 200000, rollover: true },
   { category: 'Software/SaaS', limit: 500000, rollover: false },
@@ -45,57 +39,30 @@ const INITIAL_BUDGETS: Budget[] = [
 ];
 
 const App: React.FC = () => {
-  // Setup State
   if (!isConfigured) {
     return (
       <div className="min-h-screen bg-stone-50 flex items-center justify-center p-4 font-sans">
         <div className="bg-white p-8 rounded-xl shadow-lg border border-stone-200 max-w-2xl w-full">
-          <div className="flex items-center mb-6 text-amber-600">
-            <Database size={32} className="mr-3" />
-            <h1 className="text-2xl font-bold text-stone-800">Database Setup Required</h1>
-          </div>
-          <p className="mb-4 text-stone-600">To enable team sharing, you must connect this app to a Firebase database.</p>
-          
-          <div className="bg-stone-50 p-4 rounded-lg border border-stone-200 font-mono text-xs text-stone-700 mb-6 overflow-x-auto">
-            <p className="font-bold mb-2">// 1. Open services/firebase.ts</p>
-            <p className="font-bold mb-2">// 2. Replace the 'firebaseConfig' object with your keys:</p>
-            <p>{`const firebaseConfig = {`}</p>
-            <p>{`  apiKey: "AIzaSy...",`}</p>
-            <p>{`  authDomain: "your-project.firebaseapp.com",`}</p>
-            <p>{`  projectId: "your-project",`}</p>
-            <p>{`  ...`}</p>
-            <p>{`};`}</p>
-          </div>
-
-          <h3 className="font-bold text-stone-800 mb-2">Quick Start Guide:</h3>
-          <ol className="list-decimal list-inside space-y-2 text-sm text-stone-600">
-            <li>Go to <a href="https://console.firebase.google.com" target="_blank" className="text-blue-600 hover:underline">console.firebase.google.com</a></li>
-            <li>Create a project.</li>
-            <li>Enable <strong>Firestore Database</strong> (Start in Test Mode).</li>
-            <li>Enable <strong>Authentication</strong> (Email/Password).</li>
-            <li>Add a Web App to get your configuration keys.</li>
-            <li>Update <code>services/firebase.ts</code>.</li>
-          </ol>
+           <div className="flex items-center mb-6 text-amber-600"><Database size={32} className="mr-3" /><h1 className="text-2xl font-bold text-stone-800">Database Setup Required</h1></div>
+           <p className="mb-4 text-stone-600">Please configure your Firebase keys in <code>services/firebase.ts</code>.</p>
         </div>
       </div>
     );
   }
 
-  // App State
   const [user, setUser] = useState<any>(null);
   const [authLoading, setAuthLoading] = useState(true);
   
   const [categories, setCategories] = useState<Category[]>([]);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
-  const [budgets, setBudgets] = useState<Budget[]>([]);
+  const [budgets, setBudgets] = useState<Budget[]>([]); // Category Limits
+  const [budgetSources, setBudgetSources] = useState<BudgetSource[]>([]); // New Budget Sources
   const [recurringTransactions, setRecurringTransactions] = useState<RecurringTransaction[]>([]);
-  const [savingsGoals, setSavingsGoals] = useState<SavingsGoal[]>([]);
   
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [dataLoading, setDataLoading] = useState(true);
 
-  // Auth Listener
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (currentUser: any) => {
       setUser(currentUser);
@@ -104,12 +71,12 @@ const App: React.FC = () => {
     return () => unsubscribe();
   }, []);
 
-  // Data Listeners
   useEffect(() => {
     if (!user) {
       setTransactions([]);
       setCategories([]);
       setBudgets([]);
+      setBudgetSources([]);
       setDataLoading(false);
       return;
     }
@@ -123,26 +90,24 @@ const App: React.FC = () => {
 
     const unsubTrans = onSnapshot(collection(db, 'transactions'), (snapshot: any) => {
       const data = snapshot.docs.map((doc: any) => ({ ...doc.data(), id: doc.id })) as Transaction[];
-      // Sort by date descending locally
       data.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
       setTransactions(data);
     });
 
     const unsubBudgets = onSnapshot(collection(db, 'budgets'), (snapshot: any) => {
-      // Budgets don't strictly need IDs in the Type, but we need them for updates. 
-      // Mapping manually to fit Budget type which currently uses 'category' as key visually
       const data = snapshot.docs.map((doc: any) => ({ ...doc.data(), docId: doc.id })) as (Budget & { docId: string })[];
       setBudgets(data);
+    });
+
+    // New collection for Budget Sources
+    const unsubSources = onSnapshot(collection(db, 'budget_sources'), (snapshot: any) => {
+      const data = snapshot.docs.map((doc: any) => ({ ...doc.data(), id: doc.id })) as BudgetSource[];
+      setBudgetSources(data);
     });
 
     const unsubRecurring = onSnapshot(collection(db, 'recurring'), (snapshot: any) => {
       const data = snapshot.docs.map((doc: any) => ({ ...doc.data(), id: doc.id })) as RecurringTransaction[];
       setRecurringTransactions(data);
-    });
-
-    const unsubSavings = onSnapshot(collection(db, 'savings'), (snapshot: any) => {
-      const data = snapshot.docs.map((doc: any) => ({ ...doc.data(), id: doc.id })) as SavingsGoal[];
-      setSavingsGoals(data);
     });
     
     setDataLoading(false);
@@ -151,35 +116,65 @@ const App: React.FC = () => {
       unsubCats();
       unsubTrans();
       unsubBudgets();
+      unsubSources();
       unsubRecurring();
-      unsubSavings();
     };
   }, [user]);
 
-  // Notifications Logic (Local calculation based on fetched data)
+  // Notifications Logic
   useEffect(() => {
     if (!user) return;
     const newNotifications: Notification[] = [];
     const today = new Date();
+    today.setHours(0, 0, 0, 0); // Normalize to midnight
+    
     const currentMonth = today.getMonth();
     const currentYear = today.getFullYear();
+    const todayStr = today.toISOString().split('T')[0];
 
+    // Check Recurring Transactions
     recurringTransactions.forEach(rt => {
-       const dueDate = new Date(rt.nextDueDate);
+       const [y, m, d] = rt.nextDueDate.split('-').map(Number);
+       const dueDate = new Date(y, m - 1, d); // Local midnight
+       
        const diffTime = dueDate.getTime() - today.getTime();
        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)); 
        
        if (diffDays >= 0 && diffDays <= 3) {
+         const isAlloc = rt.type === 'allocation';
          newNotifications.push({
            id: `rec-${rt.id}-${rt.nextDueDate}`,
-           message: `Upcoming: ${rt.description} due on ${rt.nextDueDate}`,
+           message: `${isAlloc ? '💰 Allocation Incoming' : '📅 Upcoming Expense'}: ${rt.description} due ${rt.nextDueDate}`,
            type: 'info',
-           date: today.toISOString().split('T')[0],
+           date: todayStr,
            read: false
          });
        }
     });
 
+    // Check Manual Future Allocations
+    transactions.forEach(t => {
+      if (t.type === 'allocation') {
+        const [y, m, d] = t.date.split('-').map(Number);
+        const tDate = new Date(y, m - 1, d);
+        
+        const diffTime = tDate.getTime() - today.getTime();
+        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+
+        // Only alert for future allocations within 3 days
+        if (diffDays >= 0 && diffDays <= 3) {
+           newNotifications.push({
+             id: `alloc-${t.id}`,
+             message: `💰 Scheduled Allocation: ${t.description} arriving on ${t.date}`,
+             type: 'info',
+             date: todayStr,
+             read: false
+           });
+        }
+      }
+    });
+
+    // Check Budgets (Caps)
     const spendingByCategory = transactions
       .filter(t => {
         const d = new Date(t.date);
@@ -195,37 +190,42 @@ const App: React.FC = () => {
       if (b.limit > 0 && spent / b.limit >= 0.9) {
          newNotifications.push({
            id: `budget-${b.category}-${currentMonth}`,
-           message: `Budget Alert: ${b.category} is at ${Math.round((spent/b.limit)*100)}% of monthly cap.`,
+           message: `Alert: ${b.category} is at ${Math.round((spent/b.limit)*100)}% of monthly cap.`,
            type: 'warning',
-           date: today.toISOString().split('T')[0],
+           date: todayStr,
            read: false
          });
       }
     });
     
+    // Sort notifications by urgency/date if needed, but for now simple push
+    // Avoid infinite loop by checking length
     if (newNotifications.length > 0) {
         setNotifications(prev => {
-          // simple dedup based on length for demo
-          if (prev.length !== newNotifications.length) return newNotifications;
+          // Simple JSON stringify comparison to avoid loop if identical
+          if (JSON.stringify(prev) !== JSON.stringify(newNotifications)) {
+            return newNotifications;
+          }
           return prev;
         });
     }
   }, [transactions, budgets, recurringTransactions, user]);
 
-  // Recurring Logic (Process and update DB)
+  // Recurring Logic (Simple check on load)
   useEffect(() => {
     if (!user || recurringTransactions.length === 0) return;
-
     const processRecurring = async () => {
       const today = new Date();
+      // Reset time to ensure we catch anything due 'today' regardless of time of day execution
+      today.setHours(0,0,0,0); 
+      
       const batch = writeBatch(db);
       let hasUpdates = false;
 
       recurringTransactions.forEach(rt => {
-        let dueDate = new Date(rt.nextDueDate);
+        const [y, m, d] = rt.nextDueDate.split('-').map(Number);
+        let dueDate = new Date(y, m - 1, d);
         let modified = false;
-
-        // Limit loop to prevent infinite creates if dates are messed up
         let safetyCount = 0; 
 
         while (dueDate <= today && safetyCount < 12) {
@@ -233,8 +233,11 @@ const App: React.FC = () => {
           safetyCount++;
           
           const newRef = doc(collection(db, 'transactions'));
+          // Format Date YYYY-MM-DD
+          const isoDate = `${dueDate.getFullYear()}-${String(dueDate.getMonth() + 1).padStart(2, '0')}-${String(dueDate.getDate()).padStart(2, '0')}`;
+          
           batch.set(newRef, {
-            date: dueDate.toISOString().split('T')[0],
+            date: isoDate,
             description: rt.description,
             amount: rt.amount,
             category: rt.category,
@@ -250,153 +253,108 @@ const App: React.FC = () => {
         if (modified) {
           hasUpdates = true;
           const rtRef = doc(db, 'recurring', rt.id);
-          batch.update(rtRef, { nextDueDate: dueDate.toISOString().split('T')[0] });
+          const nextIso = `${dueDate.getFullYear()}-${String(dueDate.getMonth() + 1).padStart(2, '0')}-${String(dueDate.getDate()).padStart(2, '0')}`;
+          batch.update(rtRef, { nextDueDate: nextIso });
         }
       });
 
-      if (hasUpdates) {
-        try {
-          await batch.commit();
-          console.log("Processed recurring transactions.");
-        } catch (e) {
-          console.error("Error processing recurring", e);
-        }
-      }
+      if (hasUpdates) await batch.commit();
     };
-
     processRecurring();
   }, [recurringTransactions, user]);
 
-
-  // --- Actions (Async Firestore Calls) ---
-
+  // Actions
   const addTransaction = async (t: Omit<Transaction, 'id'>) => {
-    try {
-      await addDoc(collection(db, 'transactions'), t);
-    } catch (e) { console.error("Add failed", e); }
+    try { await addDoc(collection(db, 'transactions'), t); } catch (e) { console.error(e); }
   };
 
   const deleteTransaction = async (id: string) => {
-    try {
-      await deleteDoc(doc(db, 'transactions', id));
-    } catch (e) { console.error("Delete failed", e); }
+    try { await deleteDoc(doc(db, 'transactions', id)); } catch (e) { console.error(e); }
   };
 
+  // Updates Category Limits (Channel Caps)
   const updateBudget = async (category: string, limit: number, rollover: boolean) => {
     try {
-      // Find doc ID first
       const budgetDoc = (budgets as any[]).find(b => b.category === category);
       if (budgetDoc && budgetDoc.docId) {
         await updateDoc(doc(db, 'budgets', budgetDoc.docId), { limit, rollover });
       } else {
         await addDoc(collection(db, 'budgets'), { category, limit, rollover });
       }
-    } catch (e) { console.error("Budget update failed", e); }
+    } catch (e) { console.error(e); }
+  };
+
+  // Update Budget Sources (Primary, Grants)
+  const updateBudgetSource = async (id: string | null, name: string, amount: number, description: string) => {
+     try {
+       if (id) {
+         await updateDoc(doc(db, 'budget_sources', id), { amount, description });
+       } else {
+         await addDoc(collection(db, 'budget_sources'), { name, amount, description });
+       }
+     } catch (e) { console.error(e); }
   };
 
   const addRecurringTransaction = async (rt: Omit<RecurringTransaction, 'id'>) => {
-    try {
-      await addDoc(collection(db, 'recurring'), rt);
-    } catch (e) { console.error("Recurring add failed", e); }
+    try { await addDoc(collection(db, 'recurring'), rt); } catch (e) { console.error(e); }
   };
 
   const deleteRecurringTransaction = async (id: string) => {
-    try {
-      await deleteDoc(doc(db, 'recurring', id));
-    } catch (e) { console.error("Recurring delete failed", e); }
+    try { await deleteDoc(doc(db, 'recurring', id)); } catch (e) { console.error(e); }
   };
 
-  const addSavingsGoal = async (goal: Omit<SavingsGoal, 'id'>) => {
-    try {
-      await addDoc(collection(db, 'savings'), goal);
-    } catch (e) { console.error("Savings add failed", e); }
-  };
-
-  const updateSavingsAmount = async (id: string, amount: number) => {
-    try {
-      const goal = savingsGoals.find(g => g.id === id);
-      if (goal) {
-        await updateDoc(doc(db, 'savings', id), { currentAmount: goal.currentAmount + amount });
-      }
-    } catch (e) { console.error("Savings update failed", e); }
-  };
-
-  const deleteSavingsGoal = async (id: string) => {
-    try {
-      await deleteDoc(doc(db, 'savings', id));
-    } catch (e) { console.error("Savings delete failed", e); }
-  };
-
-  const addCategory = async (name: string, type: TransactionType, color?: string) => {
+  const addCategory = async (name: string, type: any, color?: string) => {
     try {
       if (!categories.find(c => c.name.toLowerCase() === name.toLowerCase() && c.type === type)) {
         await addDoc(collection(db, 'categories'), { name, type, color: color || '#64748b' });
-        // Init budget
         if (type === 'expense') {
           await addDoc(collection(db, 'budgets'), { category: name, limit: 0, rollover: false });
         }
       }
-    } catch (e) { console.error("Category add failed", e); }
+    } catch (e) { console.error(e); }
   };
 
   const deleteCategory = async (id: string) => {
-    try {
-      const cat = categories.find(c => c.id === id);
-      if (cat) {
-        await deleteDoc(doc(db, 'categories', id));
-        // Note: We are not cascading delete budgets/transactions to keep history, 
-        // but normally you might want to mark them archived.
-      }
-    } catch (e) { console.error("Category delete failed", e); }
+    try { await deleteDoc(doc(db, 'categories', id)); } catch (e) { console.error(e); }
   };
 
   const editCategory = async (id: string, newName: string, newColor?: string) => {
-    try {
-      await updateDoc(doc(db, 'categories', id), { name: newName, color: newColor });
-      // Note: We should ideally update all transaction references to this name, 
-      // but NoSQL denormalization makes this heavy. 
-      // For this MVP, we update just the definition.
-    } catch (e) { console.error("Category edit failed", e); }
+    try { await updateDoc(doc(db, 'categories', id), { name: newName, color: newColor }); } catch (e) { console.error(e); }
   };
 
   const seedData = async () => {
     const batch = writeBatch(db);
     
-    // Seed Categories
     INITIAL_CATEGORIES.forEach(cat => {
       const ref = doc(collection(db, 'categories'));
       batch.set(ref, { name: cat.name, color: cat.color, type: cat.type });
     });
 
-    // Seed Budgets
-    INITIAL_BUDGETS.forEach(bud => {
+    INITIAL_BUDGET_LIMITS.forEach(bud => {
       const ref = doc(collection(db, 'budgets'));
       batch.set(ref, bud);
     });
 
-    // Seed Transactions
     INITIAL_TRANSACTIONS.forEach(txn => {
       const ref = doc(collection(db, 'transactions'));
       batch.set(ref, txn);
     });
 
+    // Seed empty budget sources
+    const sources = ['Primary Budget', 'Principle Grants', 'Group Grants'];
+    sources.forEach(s => {
+      const ref = doc(collection(db, 'budget_sources'));
+      batch.set(ref, { name: s, amount: 0, description: '' });
+    });
+
     try {
       await batch.commit();
-      window.location.reload(); // Refresh to see data
+      window.location.reload();
     } catch(e) { console.error(e); }
   };
 
-  if (authLoading) {
-    return (
-      <div className="min-h-screen bg-stone-50 flex items-center justify-center">
-        <Loader2 className="animate-spin text-stone-400" size={32} />
-      </div>
-    );
-  }
-
-  if (!user) {
-    return <Auth />;
-  }
+  if (authLoading) return <div className="min-h-screen flex items-center justify-center"><Loader2 className="animate-spin" /></div>;
+  if (!user) return <Auth />;
 
   return (
     <HashRouter>
@@ -407,27 +365,16 @@ const App: React.FC = () => {
         onSearch={setSearchTerm}
         userEmail={user?.email}
       >
-        {/* Empty State / Seeder */}
         {categories.length === 0 && !dataLoading && (
-           <div className="bg-blue-50 border border-blue-200 p-4 rounded-lg mb-6 flex items-center justify-between animate-in fade-in">
-             <div className="flex items-center">
-               <Database className="text-blue-500 mr-3" />
-               <div>
-                 <h3 className="font-bold text-blue-900">Database is empty</h3>
-                 <p className="text-sm text-blue-700">Would you like to load the default Vision Care template data?</p>
-               </div>
-             </div>
-             <button 
-               onClick={seedData}
-               className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg text-sm transition-colors"
-             >
-               Load Template Data
-             </button>
+           <div className="bg-blue-50 border border-blue-200 p-4 rounded-lg mb-6 flex items-center justify-between">
+             <div className="flex items-center"><Database className="text-blue-500 mr-3" /><div><h3 className="font-bold text-blue-900">Database Empty</h3><p className="text-sm">Load default Vision Care template?</p></div></div>
+             <button onClick={seedData} className="bg-blue-600 text-white font-bold py-2 px-4 rounded-lg">Load Template Data</button>
            </div>
         )}
 
         <Routes>
-          <Route path="/" element={<Dashboard transactions={transactions} budgets={budgets} categories={categories} />} />
+          <Route path="/" element={<Dashboard transactions={transactions} budgets={budgets} categories={categories} budgetSources={budgetSources} />} />
+          <Route path="/budgets" element={<BudgetsPage budgetSources={budgetSources} onUpdateSource={updateBudgetSource} />} />
           <Route 
             path="/transactions" 
             element={
@@ -444,29 +391,8 @@ const App: React.FC = () => {
             } 
           />
           <Route 
-            path="/budgets" 
-            element={
-              <BudgetsPage 
-                transactions={transactions} 
-                budgets={budgets} 
-                onUpdateBudget={updateBudget} 
-              />
-            } 
-          />
-          <Route
-            path="/savings"
-            element={
-              <SavingsPage
-                goals={savingsGoals}
-                onAddGoal={addSavingsGoal}
-                onUpdateAmount={updateSavingsAmount}
-                onDeleteGoal={deleteSavingsGoal}
-              />
-            }
-          />
-          <Route 
             path="/insights" 
-            element={<InsightsPage transactions={transactions} budgets={budgets} />} 
+            element={<InsightsPage transactions={transactions} budgets={budgets} onUpdateBudget={updateBudget} />} 
           />
           <Route
             path="/settings"

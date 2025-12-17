@@ -137,7 +137,7 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
               className="px-3 py-2 border border-stone-200 rounded-lg text-sm bg-white text-stone-800 focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
             >
               <option value="expense">Expense</option>
-              <option value="income">Income</option>
+              <option value="allocation">Allocation</option>
             </select>
             <button 
               type="submit"
@@ -189,11 +189,11 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
             </ul>
           </div>
 
-          {/* Income */}
+          {/* Allocations */}
           <div>
-            <h3 className="text-sm font-bold text-emerald-600 uppercase tracking-wider mb-3">Income / Funding</h3>
+            <h3 className="text-sm font-bold text-emerald-600 uppercase tracking-wider mb-3">Allocations</h3>
             <ul className="space-y-2">
-              {categories.filter(c => c.type === 'income').map(cat => (
+              {categories.filter(c => c.type === 'allocation').map(cat => (
                 <li key={cat.id} className="flex justify-between items-center p-3 bg-stone-50 rounded-lg border border-stone-100">
                   {editingId === cat.id ? (
                     <div className="flex flex-1 gap-2 items-center">
