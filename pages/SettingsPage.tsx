@@ -1,7 +1,7 @@
-import React, { useState } from 'react';
-import { Category, Transaction, Budget, TransactionType } from '../types';
-import { Download, Trash2, Plus, Edit2, Check, X, FolderCog, FileSpreadsheet, LogOut, UserCircle } from 'lucide-react';
-import { signOut, auth } from '../services/firebase';
+import React, { useState, useEffect } from 'react';
+import { Category, Transaction, Budget, TransactionType, AppSettings } from '../types';
+import { Download, Trash2, Plus, Edit2, Check, X, FolderCog, FileSpreadsheet, LogOut, UserCircle, Bell, Save, Key } from 'lucide-react';
+import { signOut, auth, doc, db, onSnapshot, setDoc } from '../services/firebase';
 
 interface SettingsPageProps {
   categories: Category[];
@@ -26,6 +26,48 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editName, setEditName] = useState('');
   const [editColor, setEditColor] = useState('');
+
+  // Settings State
+  const [alertEmail, setAlertEmail] = useState('');
+  const [emailServiceId, setEmailServiceId] = useState('');
+  const [emailTemplateId, setEmailTemplateId] = useState('');
+  const [emailPublicKey, setEmailPublicKey] = useState('');
+  
+  const [settingsLoading, setSettingsLoading] = useState(false);
+  const [settingsSaved, setSettingsSaved] = useState(false);
+
+  useEffect(() => {
+    // Load existing settings
+    const unsub = onSnapshot(doc(db, 'settings', 'preferences'), (doc) => {
+      if (doc.exists()) {
+        const data = doc.data() as AppSettings;
+        if (data.alertEmail) setAlertEmail(data.alertEmail);
+        if (data.emailServiceId) setEmailServiceId(data.emailServiceId);
+        if (data.emailTemplateId) setEmailTemplateId(data.emailTemplateId);
+        if (data.emailPublicKey) setEmailPublicKey(data.emailPublicKey);
+      }
+    });
+    return () => unsub();
+  }, []);
+
+  const handleSaveSettings = async () => {
+    setSettingsLoading(true);
+    try {
+      const settings: AppSettings = {
+        alertEmail,
+        emailServiceId,
+        emailTemplateId,
+        emailPublicKey
+      };
+      await setDoc(doc(db, 'settings', 'preferences'), settings, { merge: true });
+      setSettingsSaved(true);
+      setTimeout(() => setSettingsSaved(false), 2000);
+    } catch (e) {
+      console.error("Error saving settings:", e);
+    } finally {
+      setSettingsLoading(false);
+    }
+  };
 
   const handleAdd = (e: React.FormEvent) => {
     e.preventDefault();
@@ -97,14 +139,85 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
         </button>
       </div>
 
-      {/* Account Info */}
-      <div className="bg-white p-6 rounded-xl shadow-sm border border-stone-100">
-         <div className="flex items-center mb-4">
-           <UserCircle className="text-blue-900 mr-2" />
-           <h2 className="text-lg font-bold text-stone-800">Account</h2>
-         </div>
-         <p className="text-sm text-stone-500">You are currently logged in as:</p>
-         <p className="font-bold text-stone-800 mt-1">{userName}</p>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+        {/* Account Info */}
+        <div className="bg-white p-6 rounded-xl shadow-sm border border-stone-100 h-full">
+           <div className="flex items-center mb-4">
+             <UserCircle className="text-blue-900 mr-2" />
+             <h2 className="text-lg font-bold text-stone-800">Account</h2>
+           </div>
+           <p className="text-sm text-stone-500">You are currently logged in as:</p>
+           <p className="font-bold text-stone-800 mt-1">{userName}</p>
+        </div>
+
+        {/* Notification Settings */}
+        <div className="bg-white p-6 rounded-xl shadow-sm border border-stone-100 h-full">
+           <div className="flex items-center mb-4">
+             <Bell className="text-amber-500 mr-2" />
+             <h2 className="text-lg font-bold text-stone-800">Notification Preferences</h2>
+           </div>
+           
+           <div className="space-y-4">
+              <div>
+                 <label className="block text-xs font-bold text-stone-500 mb-1">Recipient Email</label>
+                 <div className="flex items-center gap-2">
+                   <input 
+                     type="email" 
+                     value={alertEmail}
+                     onChange={(e) => setAlertEmail(e.target.value)}
+                     placeholder="Enter email address"
+                     className="flex-1 px-3 py-2 border border-stone-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-amber-500/20 bg-stone-50 text-stone-800"
+                   />
+                 </div>
+              </div>
+
+              <div className="pt-4 border-t border-stone-100">
+                <div className="flex items-center mb-2">
+                   <Key className="text-emerald-500 mr-2" size={16} />
+                   <h3 className="text-sm font-bold text-stone-700">Email Service Configuration</h3>
+                </div>
+                <p className="text-xs text-stone-500 mb-3">
+                  Required to send real emails. Create a free account at <a href="https://www.emailjs.com" target="_blank" rel="noreferrer" className="text-blue-600 underline">EmailJS</a>.
+                </p>
+                
+                <div className="space-y-2">
+                  <input 
+                    type="text" 
+                    value={emailServiceId}
+                    onChange={(e) => setEmailServiceId(e.target.value)}
+                    placeholder="Service ID (e.g. service_xyz)"
+                    className="w-full px-3 py-2 border border-stone-200 rounded-lg text-xs bg-stone-50 text-stone-800 font-mono"
+                  />
+                  <input 
+                    type="text" 
+                    value={emailTemplateId}
+                    onChange={(e) => setEmailTemplateId(e.target.value)}
+                    placeholder="Template ID (e.g. template_abc)"
+                    className="w-full px-3 py-2 border border-stone-200 rounded-lg text-xs bg-stone-50 text-stone-800 font-mono"
+                  />
+                  <input 
+                    type="password" 
+                    value={emailPublicKey}
+                    onChange={(e) => setEmailPublicKey(e.target.value)}
+                    placeholder="Public Key (e.g. user_12345)"
+                    className="w-full px-3 py-2 border border-stone-200 rounded-lg text-xs bg-stone-50 text-stone-800 font-mono"
+                  />
+                </div>
+              </div>
+
+              <button 
+                 onClick={handleSaveSettings}
+                 disabled={settingsLoading}
+                 className="w-full flex items-center justify-center bg-stone-800 text-white p-2 rounded-lg hover:bg-stone-900 transition-colors disabled:opacity-50 mt-2"
+               >
+                 {settingsSaved ? (
+                   <><Check size={16} className="mr-2 text-emerald-400" /> Saved</>
+                 ) : (
+                   <><Save size={16} className="mr-2" /> Save Configuration</>
+                 )}
+               </button>
+           </div>
+        </div>
       </div>
 
       {/* Category Management */}

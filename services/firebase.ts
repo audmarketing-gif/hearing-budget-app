@@ -9,7 +9,8 @@ import {
   onSnapshot,
   query,
   orderBy,
-  writeBatch
+  writeBatch,
+  setDoc
 } from "firebase/firestore";
 import { 
   getAuth, 
@@ -59,5 +60,6 @@ export {
   signInWithEmailAndPassword,
   signOut,
   onAuthStateChanged,
-  writeBatch
+  writeBatch,
+  setDoc
 };

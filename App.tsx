@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { HashRouter, Routes, Route, Navigate } from 'react-router-dom';
 import Layout from './components/Layout';
 import Auth from './components/Auth';
-import { Transaction, Budget, RecurringTransaction, Category, Notification, INITIAL_CATEGORIES, BudgetSource } from './types';
+import { Transaction, Budget, RecurringTransaction, Category, Notification, INITIAL_CATEGORIES, BudgetSource, AppSettings } from './types';
 import { 
   db, 
   auth, 
@@ -16,6 +16,7 @@ import {
   onAuthStateChanged,
   writeBatch
 } from './services/firebase';
+import { sendAllocationAlert } from './services/emailService';
 
 // Pages
 import Dashboard from './pages/Dashboard';
@@ -26,9 +27,32 @@ import SettingsPage from './pages/SettingsPage';
 import { Loader2, Database } from 'lucide-react';
 
 const INITIAL_TRANSACTIONS: any[] = [
-  { date: '2025-01-15', description: 'Ogilvy Digital - Jan Retainer', amount: 230625.00, category: 'Business Promotion & Advertising', type: 'expense', company: 'Ogilvy', invoiceNo: 'INV-001' },
-  { date: '2025-01-20', description: 'Roar AD X - Jan', amount: 777383.48, category: 'Business Promotion & Advertising', type: 'expense', company: 'Roar' },
-  { date: '2025-02-15', description: 'Ogilvy Digital - Feb', amount: 5830097.37, category: 'Business Promotion & Advertising', type: 'expense' },
+  // Business Promotion & Advertising
+  { date: '2025-03-15', description: 'CORLHNS Sri Lanka - March 2025', amount: 1200000.00, category: 'Business Promotion & Advertising', type: 'expense', company: 'CORLHNS Sri Lanka' },
+  { date: '2025-05-15', description: 'Litmus Private Limited - May 2025', amount: 1090000.00, category: 'Business Promotion & Advertising', type: 'expense', company: 'Litmus Private Limited' },
+  
+  { date: '2025-03-15', description: 'MIDEATION INTEGRATED - March 2025', amount: 131200.00, category: 'Business Promotion & Advertising', type: 'expense', company: 'MIDEATION INTEGRATED (PVT) LTD' },
+  { date: '2025-04-15', description: 'MIDEATION INTEGRATED - April 2025', amount: 1994035.46, category: 'Business Promotion & Advertising', type: 'expense', company: 'MIDEATION INTEGRATED (PVT) LTD' },
+  { date: '2025-05-15', description: 'MIDEATION INTEGRATED - May 2025', amount: 2357500.00, category: 'Business Promotion & Advertising', type: 'expense', company: 'MIDEATION INTEGRATED (PVT) LTD' },
+
+  { date: '2025-01-15', description: 'Ogilvy Digital - Jan 2025', amount: 230625.00, category: 'Business Promotion & Advertising', type: 'expense', company: 'Ogilvy Digital (Pvt) Ltd' },
+  { date: '2025-02-15', description: 'Ogilvy Digital - Feb 2025', amount: 5830097.37, category: 'Business Promotion & Advertising', type: 'expense', company: 'Ogilvy Digital (Pvt) Ltd' },
+  { date: '2025-03-15', description: 'Ogilvy Digital - March 2025', amount: 720575.00, category: 'Business Promotion & Advertising', type: 'expense', company: 'Ogilvy Digital (Pvt) Ltd' },
+  { date: '2025-05-15', description: 'Ogilvy Digital - May 2025', amount: 1939868.58, category: 'Business Promotion & Advertising', type: 'expense', company: 'Ogilvy Digital (Pvt) Ltd' },
+
+  { date: '2025-02-15', description: 'REDFLY - Feb 2025', amount: 38000.00, category: 'Business Promotion & Advertising', type: 'expense', company: 'REDFLY (PVT) LTD' },
+  { date: '2025-03-15', description: 'REDFLY - March 2025', amount: 65000.00, category: 'Business Promotion & Advertising', type: 'expense', company: 'REDFLY (PVT) LTD' },
+
+  { date: '2025-01-15', description: 'Roar AD X - Jan 2025', amount: 777383.48, category: 'Business Promotion & Advertising', type: 'expense', company: 'Roar AD X (PVT) LTD' },
+  { date: '2025-02-15', description: 'Roar AD X - Feb 2025', amount: 76349.17, category: 'Business Promotion & Advertising', type: 'expense', company: 'Roar AD X (PVT) LTD' },
+  { date: '2025-03-15', description: 'Roar AD X - March 2025', amount: 177829.07, category: 'Business Promotion & Advertising', type: 'expense', company: 'Roar AD X (PVT) LTD' },
+  { date: '2025-04-15', description: 'Roar AD X - April 2025', amount: 603019.48, category: 'Business Promotion & Advertising', type: 'expense', company: 'Roar AD X (PVT) LTD' },
+  { date: '2025-05-15', description: 'Roar AD X - May 2025', amount: 165717.33, category: 'Business Promotion & Advertising', type: 'expense', company: 'Roar AD X (PVT) LTD' },
+  { date: '2025-06-15', description: 'Roar AD X - June 2025', amount: 523511.58, category: 'Business Promotion & Advertising', type: 'expense', company: 'Roar AD X (PVT) LTD' },
+
+  // Other Marketing Expense
+  { date: '2025-03-15', description: 'K.H.Chamila Madushanka - March 2025', amount: 16150.00, category: 'Other Marketing Expense', type: 'expense', company: 'K.H.Chamila Madushanka' },
+  { date: '2025-05-15', description: 'Promowatch - May 2025', amount: 92621.56, category: 'Other Marketing Expense', type: 'expense', company: 'Promowatch (Pvt) Ltd' },
 ];
 
 const INITIAL_BUDGET_LIMITS: Budget[] = [
@@ -58,6 +82,7 @@ const App: React.FC = () => {
   const [budgets, setBudgets] = useState<Budget[]>([]); // Category Limits
   const [budgetSources, setBudgetSources] = useState<BudgetSource[]>([]); // New Budget Sources
   const [recurringTransactions, setRecurringTransactions] = useState<RecurringTransaction[]>([]);
+  const [appSettings, setAppSettings] = useState<AppSettings | null>(null);
   
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
@@ -109,6 +134,12 @@ const App: React.FC = () => {
       const data = snapshot.docs.map((doc: any) => ({ ...doc.data(), id: doc.id })) as RecurringTransaction[];
       setRecurringTransactions(data);
     });
+
+    const unsubSettings = onSnapshot(doc(db, 'settings', 'preferences'), (doc: any) => {
+       if (doc.exists()) {
+          setAppSettings(doc.data() as AppSettings);
+       }
+    });
     
     setDataLoading(false);
 
@@ -118,6 +149,7 @@ const App: React.FC = () => {
       unsubBudgets();
       unsubSources();
       unsubRecurring();
+      unsubSettings();
     };
   }, [user]);
 
@@ -131,6 +163,45 @@ const App: React.FC = () => {
     const currentMonth = today.getMonth();
     const currentYear = today.getFullYear();
     const todayStr = today.toISOString().split('T')[0];
+
+    // Helper to send email alerts safely
+    const triggerEmailAlert = (id: string, description: string, date: string, amount: number) => {
+      if (appSettings?.alertEmail) {
+        const sentKey = `alert_sent_${id}`;
+        // Only send if not already sent today/for this event
+        if (!localStorage.getItem(sentKey)) {
+          // Pass the config keys from appSettings
+          const config = {
+             serviceId: appSettings.emailServiceId,
+             templateId: appSettings.emailTemplateId,
+             publicKey: appSettings.emailPublicKey
+          };
+
+          sendAllocationAlert(appSettings.alertEmail, { description, date, amount }, config)
+            .then((success) => {
+              if (success) {
+                localStorage.setItem(sentKey, 'true');
+                // Push a UI notification about the email being sent
+                newNotifications.push({
+                  id: `email-sent-${id}`,
+                  message: `📧 Email alert sent to ${appSettings.alertEmail} for ${description}`,
+                  type: 'info',
+                  date: todayStr,
+                  read: false
+                });
+                // Force update notifications state to show the email sent toast
+                setNotifications(prev => [...prev, {
+                  id: `email-sent-${id}`,
+                  message: `📧 Email alert sent to ${appSettings.alertEmail} for ${description}`,
+                  type: 'info',
+                  date: todayStr,
+                  read: false
+                }]);
+              }
+            });
+        }
+      }
+    };
 
     // Check Recurring Transactions
     recurringTransactions.forEach(rt => {
@@ -149,6 +220,11 @@ const App: React.FC = () => {
            date: todayStr,
            read: false
          });
+
+         // Email Alert for Allocation
+         if (isAlloc) {
+           triggerEmailAlert(rt.id + rt.nextDueDate, rt.description, rt.nextDueDate, rt.amount);
+         }
        }
     });
 
@@ -170,6 +246,9 @@ const App: React.FC = () => {
              date: todayStr,
              read: false
            });
+
+           // Email Alert for Allocation
+           triggerEmailAlert(t.id, t.description, t.date, t.amount);
         }
       }
     });
@@ -209,7 +288,7 @@ const App: React.FC = () => {
           return prev;
         });
     }
-  }, [transactions, budgets, recurringTransactions, user]);
+  }, [transactions, budgets, recurringTransactions, user, appSettings]);
 
   // Recurring Logic (Simple check on load)
   useEffect(() => {

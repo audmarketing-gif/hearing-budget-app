@@ -62,6 +62,13 @@ export interface SavingsGoal {
   color: string;
 }
 
+export interface AppSettings {
+  alertEmail: string;
+  emailServiceId?: string;
+  emailTemplateId?: string;
+  emailPublicKey?: string;
+}
+
 export const INITIAL_CATEGORIES: Category[] = [
   // Expenses
   { id: '1', name: 'Business Promotion & Advertising', color: '#ef4444', type: 'expense' },
