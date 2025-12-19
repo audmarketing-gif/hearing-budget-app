@@ -48,8 +48,9 @@ export const getFinancialAdvice = async (
   `;
 
   try {
+    // Corrected to use gemini-3-flash-preview for general text reasoning tasks.
     const response = await ai.models.generateContent({
-      model: 'gemini-2.5-flash',
+      model: 'gemini-3-flash-preview',
       contents: prompt,
     });
     return response.text || "Unable to generate insights at this time.";

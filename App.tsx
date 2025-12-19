@@ -453,7 +453,18 @@ const App: React.FC = () => {
 
         <Routes>
           <Route path="/" element={<Dashboard transactions={transactions} budgets={budgets} categories={categories} budgetSources={budgetSources} />} />
-          <Route path="/budgets" element={<BudgetsPage budgetSources={budgetSources} onUpdateSource={updateBudgetSource} />} />
+          <Route 
+            path="/budgets" 
+            element={
+              <BudgetsPage 
+                budgetSources={budgetSources} 
+                budgets={budgets} 
+                categories={categories}
+                onUpdateSource={updateBudgetSource} 
+                onUpdateBudget={updateBudget}
+              />
+            } 
+          />
           <Route 
             path="/transactions" 
             element={
