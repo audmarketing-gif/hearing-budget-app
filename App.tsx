@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { HashRouter, Routes, Route, Navigate } from 'react-router-dom';
 import Layout from './components/Layout';
 import Auth from './components/Auth';
@@ -14,7 +14,8 @@ import {
   doc, 
   onSnapshot, 
   onAuthStateChanged,
-  writeBatch
+  writeBatch,
+  signOut
 } from './services/firebase';
 import { sendAllocationAlert } from './services/emailService';
 
@@ -24,35 +25,14 @@ import TransactionsPage from './pages/TransactionsPage';
 import BudgetsPage from './pages/BudgetsPage';
 import InsightsPage from './pages/InsightsPage';
 import SettingsPage from './pages/SettingsPage';
-import { Loader2, Database } from 'lucide-react';
+import { Loader2, Database, ShieldAlert, RefreshCcw, ExternalLink, Clock } from 'lucide-react';
 
 const INITIAL_TRANSACTIONS: any[] = [
-  // Business Promotion & Advertising
   { date: '2025-03-15', description: 'CORLHNS Sri Lanka - March 2025', amount: 1200000.00, category: 'Business Promotion & Advertising', type: 'expense', company: 'CORLHNS Sri Lanka' },
   { date: '2025-05-15', description: 'Litmus Private Limited - May 2025', amount: 1090000.00, category: 'Business Promotion & Advertising', type: 'expense', company: 'Litmus Private Limited' },
-  
-  { date: '2025-03-15', description: 'MIDEATION INTEGRATED - March 2025', amount: 131200.00, category: 'Business Promotion & Advertising', type: 'expense', company: 'MIDEATION INTEGRATED (PVT) LTD' },
   { date: '2025-04-15', description: 'MIDEATION INTEGRATED - April 2025', amount: 1994035.46, category: 'Business Promotion & Advertising', type: 'expense', company: 'MIDEATION INTEGRATED (PVT) LTD' },
-  { date: '2025-05-15', description: 'MIDEATION INTEGRATED - May 2025', amount: 2357500.00, category: 'Business Promotion & Advertising', type: 'expense', company: 'MIDEATION INTEGRATED (PVT) LTD' },
-
-  { date: '2025-01-15', description: 'Ogilvy Digital - Jan 2025', amount: 230625.00, category: 'Business Promotion & Advertising', type: 'expense', company: 'Ogilvy Digital (Pvt) Ltd' },
   { date: '2025-02-15', description: 'Ogilvy Digital - Feb 2025', amount: 5830097.37, category: 'Business Promotion & Advertising', type: 'expense', company: 'Ogilvy Digital (Pvt) Ltd' },
-  { date: '2025-03-15', description: 'Ogilvy Digital - March 2025', amount: 720575.00, category: 'Business Promotion & Advertising', type: 'expense', company: 'Ogilvy Digital (Pvt) Ltd' },
-  { date: '2025-05-15', description: 'Ogilvy Digital - May 2025', amount: 1939868.58, category: 'Business Promotion & Advertising', type: 'expense', company: 'Ogilvy Digital (Pvt) Ltd' },
-
-  { date: '2025-02-15', description: 'REDFLY - Feb 2025', amount: 38000.00, category: 'Business Promotion & Advertising', type: 'expense', company: 'REDFLY (PVT) LTD' },
-  { date: '2025-03-15', description: 'REDFLY - March 2025', amount: 65000.00, category: 'Business Promotion & Advertising', type: 'expense', company: 'REDFLY (PVT) LTD' },
-
-  { date: '2025-01-15', description: 'Roar AD X - Jan 2025', amount: 777383.48, category: 'Business Promotion & Advertising', type: 'expense', company: 'Roar AD X (PVT) LTD' },
-  { date: '2025-02-15', description: 'Roar AD X - Feb 2025', amount: 76349.17, category: 'Business Promotion & Advertising', type: 'expense', company: 'Roar AD X (PVT) LTD' },
-  { date: '2025-03-15', description: 'Roar AD X - March 2025', amount: 177829.07, category: 'Business Promotion & Advertising', type: 'expense', company: 'Roar AD X (PVT) LTD' },
-  { date: '2025-04-15', description: 'Roar AD X - April 2025', amount: 603019.48, category: 'Business Promotion & Advertising', type: 'expense', company: 'Roar AD X (PVT) LTD' },
-  { date: '2025-05-15', description: 'Roar AD X - May 2025', amount: 165717.33, category: 'Business Promotion & Advertising', type: 'expense', company: 'Roar AD X (PVT) LTD' },
   { date: '2025-06-15', description: 'Roar AD X - June 2025', amount: 523511.58, category: 'Business Promotion & Advertising', type: 'expense', company: 'Roar AD X (PVT) LTD' },
-
-  // Other Marketing Expense
-  { date: '2025-03-15', description: 'K.H.Chamila Madushanka - March 2025', amount: 16150.00, category: 'Other Marketing Expense', type: 'expense', company: 'K.H.Chamila Madushanka' },
-  { date: '2025-05-15', description: 'Promowatch - May 2025', amount: 92621.56, category: 'Other Marketing Expense', type: 'expense', company: 'Promowatch (Pvt) Ltd' },
 ];
 
 const INITIAL_BUDGET_LIMITS: Budget[] = [
@@ -76,11 +56,12 @@ const App: React.FC = () => {
 
   const [user, setUser] = useState<any>(null);
   const [authLoading, setAuthLoading] = useState(true);
+  const [permissionError, setPermissionError] = useState<string | null>(null);
   
   const [categories, setCategories] = useState<Category[]>([]);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
-  const [budgets, setBudgets] = useState<Budget[]>([]); // Category Limits
-  const [budgetSources, setBudgetSources] = useState<BudgetSource[]>([]); // New Budget Sources
+  const [budgets, setBudgets] = useState<Budget[]>([]);
+  const [budgetSources, setBudgetSources] = useState<BudgetSource[]>([]);
   const [recurringTransactions, setRecurringTransactions] = useState<RecurringTransaction[]>([]);
   const [appSettings, setAppSettings] = useState<AppSettings | null>(null);
   
@@ -88,12 +69,18 @@ const App: React.FC = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [dataLoading, setDataLoading] = useState(true);
 
+  // Use ref to track active unsubscribes to force stop them if permission error occurs
+  const unsubsRef = useRef<(() => void)[]>([]);
+
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (currentUser: any) => {
+    const unsubscribeAuth = onAuthStateChanged(auth, (currentUser: any) => {
       setUser(currentUser);
       setAuthLoading(false);
+      if (!currentUser) {
+        setPermissionError(null);
+      }
     });
-    return () => unsubscribe();
+    return () => unsubscribeAuth();
   }, []);
 
   useEffect(() => {
@@ -102,247 +89,102 @@ const App: React.FC = () => {
       setCategories([]);
       setBudgets([]);
       setBudgetSources([]);
+      setAppSettings(null);
       setDataLoading(false);
       return;
     }
 
     setDataLoading(true);
 
-    const unsubCats = onSnapshot(collection(db, 'categories'), (snapshot: any) => {
-      const data = snapshot.docs.map((doc: any) => ({ ...doc.data(), id: doc.id })) as Category[];
-      setCategories(data);
-    });
+    const handleListenerError = (error: any, collectionName: string) => {
+      console.error(`[Firebase] Critical Error in ${collectionName} listener:`, error);
+      if (error.code === 'permission-denied') {
+        setPermissionError(collectionName);
+        // Force stop all other listeners to prevent console spam
+        unsubsRef.current.forEach(unsub => unsub());
+        unsubsRef.current = [];
+      }
+    };
 
-    const unsubTrans = onSnapshot(collection(db, 'transactions'), (snapshot: any) => {
-      const data = snapshot.docs.map((doc: any) => ({ ...doc.data(), id: doc.id })) as Transaction[];
-      data.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-      setTransactions(data);
-    });
+    const unsubCats = onSnapshot(
+      collection(db, 'categories'), 
+      (snapshot: any) => {
+        const data = snapshot.docs.map((doc: any) => ({ ...doc.data(), id: doc.id })) as Category[];
+        setCategories(data);
+      },
+      (err) => handleListenerError(err, 'categories')
+    );
+    unsubsRef.current.push(unsubCats);
 
-    const unsubBudgets = onSnapshot(collection(db, 'budgets'), (snapshot: any) => {
-      const data = snapshot.docs.map((doc: any) => ({ ...doc.data(), docId: doc.id })) as (Budget & { docId: string })[];
-      setBudgets(data);
-    });
+    const unsubTrans = onSnapshot(
+      collection(db, 'transactions'), 
+      (snapshot: any) => {
+        const data = snapshot.docs.map((doc: any) => ({ ...doc.data(), id: doc.id })) as Transaction[];
+        data.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+        setTransactions(data);
+      },
+      (err) => handleListenerError(err, 'transactions')
+    );
+    unsubsRef.current.push(unsubTrans);
 
-    // New collection for Budget Sources
-    const unsubSources = onSnapshot(collection(db, 'budget_sources'), (snapshot: any) => {
-      const data = snapshot.docs.map((doc: any) => ({ ...doc.data(), id: doc.id })) as BudgetSource[];
-      setBudgetSources(data);
-    });
+    const unsubBudgets = onSnapshot(
+      collection(db, 'budgets'), 
+      (snapshot: any) => {
+        const data = snapshot.docs.map((doc: any) => ({ ...doc.data(), docId: doc.id })) as (Budget & { docId: string })[];
+        setBudgets(data);
+      },
+      (err) => handleListenerError(err, 'budgets')
+    );
+    unsubsRef.current.push(unsubBudgets);
 
-    const unsubRecurring = onSnapshot(collection(db, 'recurring'), (snapshot: any) => {
-      const data = snapshot.docs.map((doc: any) => ({ ...doc.data(), id: doc.id })) as RecurringTransaction[];
-      setRecurringTransactions(data);
-    });
+    const unsubSources = onSnapshot(
+      collection(db, 'budget_sources'), 
+      (snapshot: any) => {
+        const data = snapshot.docs.map((doc: any) => ({ ...doc.data(), id: doc.id })) as BudgetSource[];
+        setBudgetSources(data);
+      },
+      (err) => handleListenerError(err, 'budget_sources')
+    );
+    unsubsRef.current.push(unsubSources);
 
-    const unsubSettings = onSnapshot(doc(db, 'settings', 'preferences'), (doc: any) => {
-       if (doc.exists()) {
+    const unsubRecurring = onSnapshot(
+      collection(db, 'recurring'), 
+      (snapshot: any) => {
+        const data = snapshot.docs.map((doc: any) => ({ ...doc.data(), id: doc.id })) as RecurringTransaction[];
+        setRecurringTransactions(data);
+      },
+      (err) => handleListenerError(err, 'recurring')
+    );
+    unsubsRef.current.push(unsubRecurring);
+
+    const unsubSettings = onSnapshot(
+      doc(db, 'settings', 'preferences'), 
+      (doc: any) => {
+        if (doc.exists()) {
           setAppSettings(doc.data() as AppSettings);
-       }
-    });
+        }
+      },
+      (err) => handleListenerError(err, 'settings/preferences')
+    );
+    unsubsRef.current.push(unsubSettings);
     
     setDataLoading(false);
 
     return () => {
-      unsubCats();
-      unsubTrans();
-      unsubBudgets();
-      unsubSources();
-      unsubRecurring();
-      unsubSettings();
+      unsubsRef.current.forEach(unsub => unsub());
+      unsubsRef.current = [];
     };
   }, [user]);
 
-  // Notifications Logic
-  useEffect(() => {
-    if (!user) return;
-    const newNotifications: Notification[] = [];
-    const today = new Date();
-    today.setHours(0, 0, 0, 0); // Normalize to midnight
-    
-    const currentMonth = today.getMonth();
-    const currentYear = today.getFullYear();
-    const todayStr = today.toISOString().split('T')[0];
-
-    // Helper to send email alerts safely
-    const triggerEmailAlert = (id: string, description: string, date: string, amount: number) => {
-      if (appSettings?.alertEmail) {
-        const sentKey = `alert_sent_${id}`;
-        // Only send if not already sent today/for this event
-        if (!localStorage.getItem(sentKey)) {
-          // Pass the config keys from appSettings
-          const config = {
-             serviceId: appSettings.emailServiceId,
-             templateId: appSettings.emailTemplateId,
-             publicKey: appSettings.emailPublicKey
-          };
-
-          sendAllocationAlert(appSettings.alertEmail, { description, date, amount }, config)
-            .then((success) => {
-              if (success) {
-                localStorage.setItem(sentKey, 'true');
-                // Push a UI notification about the email being sent
-                newNotifications.push({
-                  id: `email-sent-${id}`,
-                  message: `📧 Email alert sent to ${appSettings.alertEmail} for ${description}`,
-                  type: 'info',
-                  date: todayStr,
-                  read: false
-                });
-                // Force update notifications state to show the email sent toast
-                setNotifications(prev => [...prev, {
-                  id: `email-sent-${id}`,
-                  message: `📧 Email alert sent to ${appSettings.alertEmail} for ${description}`,
-                  type: 'info',
-                  date: todayStr,
-                  read: false
-                }]);
-              }
-            });
-        }
-      }
-    };
-
-    // Check Recurring Transactions
-    recurringTransactions.forEach(rt => {
-       const [y, m, d] = rt.nextDueDate.split('-').map(Number);
-       const dueDate = new Date(y, m - 1, d); // Local midnight
-       
-       const diffTime = dueDate.getTime() - today.getTime();
-       const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)); 
-       
-       if (diffDays >= 0 && diffDays <= 3) {
-         const isAlloc = rt.type === 'allocation';
-         newNotifications.push({
-           id: `rec-${rt.id}-${rt.nextDueDate}`,
-           message: `${isAlloc ? '💰 Allocation Incoming' : '📅 Upcoming Expense'}: ${rt.description} due ${rt.nextDueDate}`,
-           type: 'info',
-           date: todayStr,
-           read: false
-         });
-
-         // Email Alert for Allocation
-         if (isAlloc) {
-           triggerEmailAlert(rt.id + rt.nextDueDate, rt.description, rt.nextDueDate, rt.amount);
-         }
-       }
-    });
-
-    // Check Manual Future Allocations
-    transactions.forEach(t => {
-      if (t.type === 'allocation') {
-        const [y, m, d] = t.date.split('-').map(Number);
-        const tDate = new Date(y, m - 1, d);
-        
-        const diffTime = tDate.getTime() - today.getTime();
-        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-
-        // Only alert for future allocations within 3 days
-        if (diffDays >= 0 && diffDays <= 3) {
-           newNotifications.push({
-             id: `alloc-${t.id}`,
-             message: `💰 Scheduled Allocation: ${t.description} arriving on ${t.date}`,
-             type: 'info',
-             date: todayStr,
-             read: false
-           });
-
-           // Email Alert for Allocation
-           triggerEmailAlert(t.id, t.description, t.date, t.amount);
-        }
-      }
-    });
-
-    // Check Budgets (Caps)
-    const spendingByCategory = transactions
-      .filter(t => {
-        const d = new Date(t.date);
-        return t.type === 'expense' && d.getMonth() === currentMonth && d.getFullYear() === currentYear;
-      })
-      .reduce((acc, t) => {
-        acc[t.category] = (acc[t.category] || 0) + t.amount;
-        return acc;
-      }, {} as Record<string, number>);
-    
-    budgets.forEach(b => {
-      const spent = spendingByCategory[b.category] || 0;
-      if (b.limit > 0 && spent / b.limit >= 0.9) {
-         newNotifications.push({
-           id: `budget-${b.category}-${currentMonth}`,
-           message: `Alert: ${b.category} is at ${Math.round((spent/b.limit)*100)}% of monthly cap.`,
-           type: 'warning',
-           date: todayStr,
-           read: false
-         });
-      }
-    });
-    
-    // Sort notifications by urgency/date if needed, but for now simple push
-    // Avoid infinite loop by checking length
-    if (newNotifications.length > 0) {
-        setNotifications(prev => {
-          // Simple JSON stringify comparison to avoid loop if identical
-          if (JSON.stringify(prev) !== JSON.stringify(newNotifications)) {
-            return newNotifications;
-          }
-          return prev;
-        });
+  const handleLogout = useCallback(async () => {
+    try {
+      await signOut(auth);
+      window.location.reload();
+    } catch (e) {
+      console.error(e);
     }
-  }, [transactions, budgets, recurringTransactions, user, appSettings]);
+  }, []);
 
-  // Recurring Logic (Simple check on load)
-  useEffect(() => {
-    if (!user || recurringTransactions.length === 0) return;
-    const processRecurring = async () => {
-      const today = new Date();
-      // Reset time to ensure we catch anything due 'today' regardless of time of day execution
-      today.setHours(0,0,0,0); 
-      
-      const batch = writeBatch(db);
-      let hasUpdates = false;
-
-      recurringTransactions.forEach(rt => {
-        const [y, m, d] = rt.nextDueDate.split('-').map(Number);
-        let dueDate = new Date(y, m - 1, d);
-        let modified = false;
-        let safetyCount = 0; 
-
-        while (dueDate <= today && safetyCount < 12) {
-          modified = true;
-          safetyCount++;
-          
-          const newRef = doc(collection(db, 'transactions'));
-          // Format Date YYYY-MM-DD
-          const isoDate = `${dueDate.getFullYear()}-${String(dueDate.getMonth() + 1).padStart(2, '0')}-${String(dueDate.getDate()).padStart(2, '0')}`;
-          
-          batch.set(newRef, {
-            date: isoDate,
-            description: rt.description,
-            amount: rt.amount,
-            category: rt.category,
-            type: rt.type
-          });
-
-          if (rt.frequency === 'daily') dueDate.setDate(dueDate.getDate() + 1);
-          if (rt.frequency === 'weekly') dueDate.setDate(dueDate.getDate() + 7);
-          if (rt.frequency === 'monthly') dueDate.setMonth(dueDate.getMonth() + 1);
-          if (rt.frequency === 'yearly') dueDate.setFullYear(dueDate.getFullYear() + 1);
-        }
-
-        if (modified) {
-          hasUpdates = true;
-          const rtRef = doc(db, 'recurring', rt.id);
-          const nextIso = `${dueDate.getFullYear()}-${String(dueDate.getMonth() + 1).padStart(2, '0')}-${String(dueDate.getDate()).padStart(2, '0')}`;
-          batch.update(rtRef, { nextDueDate: nextIso });
-        }
-      });
-
-      if (hasUpdates) await batch.commit();
-    };
-    processRecurring();
-  }, [recurringTransactions, user]);
-
-  // Actions
   const addTransaction = async (t: Omit<Transaction, 'id'>) => {
     try { await addDoc(collection(db, 'transactions'), t); } catch (e) { console.error(e); }
   };
@@ -351,7 +193,6 @@ const App: React.FC = () => {
     try { await deleteDoc(doc(db, 'transactions', id)); } catch (e) { console.error(e); }
   };
 
-  // Updates Category Limits (Channel Caps)
   const updateBudget = async (category: string, limit: number, rollover: boolean) => {
     try {
       const budgetDoc = (budgets as any[]).find(b => b.category === category);
@@ -363,7 +204,6 @@ const App: React.FC = () => {
     } catch (e) { console.error(e); }
   };
 
-  // Update Budget Sources (Primary, Grants)
   const updateBudgetSource = async (id: string | null, name: string, amount: number, description: string) => {
      try {
        if (id) {
@@ -403,23 +243,18 @@ const App: React.FC = () => {
 
   const seedData = async () => {
     const batch = writeBatch(db);
-    
     INITIAL_CATEGORIES.forEach(cat => {
       const ref = doc(collection(db, 'categories'));
       batch.set(ref, { name: cat.name, color: cat.color, type: cat.type });
     });
-
     INITIAL_BUDGET_LIMITS.forEach(bud => {
       const ref = doc(collection(db, 'budgets'));
       batch.set(ref, bud);
     });
-
     INITIAL_TRANSACTIONS.forEach(txn => {
       const ref = doc(collection(db, 'transactions'));
       batch.set(ref, txn);
     });
-
-    // Seed empty budget sources
     const sources = ['Primary Budget', 'Principle Grants', 'Group Grants'];
     sources.forEach(s => {
       const ref = doc(collection(db, 'budget_sources'));
@@ -429,11 +264,80 @@ const App: React.FC = () => {
     try {
       await batch.commit();
       window.location.reload();
-    } catch(e) { console.error(e); }
+    } catch(e) { 
+      console.error(e);
+      alert("Failed to seed data. This is likely due to Firestore Security Rules.");
+    }
   };
 
   if (authLoading) return <div className="min-h-screen flex items-center justify-center"><Loader2 className="animate-spin" /></div>;
   if (!user) return <Auth />;
+
+  if (permissionError) {
+    return (
+      <div className="min-h-screen bg-stone-100 flex items-center justify-center p-6">
+        <div className="bg-white max-w-xl w-full p-8 rounded-2xl shadow-2xl border border-rose-100 animate-in fade-in zoom-in duration-300">
+          <div className="flex flex-col items-center text-center">
+            <div className="p-4 bg-rose-50 rounded-full text-rose-500 mb-4">
+              <ShieldAlert size={48} />
+            </div>
+            <h1 className="text-2xl font-black text-stone-800 mb-1">Database Rules Expired</h1>
+            <p className="text-stone-500 mb-6 leading-relaxed text-sm">
+              Your security rules expired on <strong>January 15th, 2026</strong>. 
+              Today is <strong>{new Date().toLocaleDateString()}</strong>, so Firebase is blocking all data access.
+            </p>
+            
+            <div className="bg-stone-50 p-6 rounded-xl border border-stone-200 text-left w-full mb-6">
+              <h3 className="text-sm font-bold text-stone-700 mb-3 flex items-center">
+                <Clock size={16} className="mr-2 text-rose-500" /> How to fix:
+              </h3>
+              <ol className="text-xs text-stone-600 space-y-3 list-decimal pl-4">
+                <li>Open the <a href="https://console.firebase.google.com/" target="_blank" rel="noreferrer" className="text-blue-600 underline font-bold">Firebase Console</a>.</li>
+                <li>Go to <strong>Build</strong> &gt; <strong>Firestore Database</strong> &gt; <strong>Rules</strong> tab.</li>
+                <li><strong>DELETE</strong> the current date-check rule and <strong>REPLACE</strong> it with this:
+                  <pre className="mt-2 p-3 bg-stone-900 text-emerald-400 rounded-md overflow-x-auto text-[10px] font-mono leading-normal">
+{`rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /{document=**} {
+      allow read, write: if request.auth != null;
+    }
+  }
+}`}
+                  </pre>
+                </li>
+                <li>Click <strong>Publish</strong>. The app will work instantly after you refresh.</li>
+              </ol>
+            </div>
+
+            <div className="flex flex-col gap-3 w-full">
+              <button 
+                onClick={() => window.location.reload()}
+                className="w-full bg-stone-800 text-white font-bold py-3 rounded-lg hover:bg-stone-900 transition-all flex items-center justify-center gap-2"
+              >
+                <RefreshCcw size={18} /> I updated the rules, Refresh App
+              </button>
+              <button 
+                onClick={handleLogout}
+                className="w-full bg-white border border-stone-200 text-stone-600 font-bold py-3 rounded-lg hover:bg-stone-50 transition-all"
+              >
+                Sign Out
+              </button>
+            </div>
+
+            <a 
+              href="https://console.firebase.google.com/" 
+              target="_blank" 
+              rel="noreferrer"
+              className="mt-6 text-sm text-blue-600 hover:underline flex items-center gap-1 font-bold"
+            >
+              Go to Firebase Console <ExternalLink size={14} />
+            </a>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <HashRouter>
@@ -444,7 +348,7 @@ const App: React.FC = () => {
         onSearch={setSearchTerm}
         userEmail={user?.email}
       >
-        {categories.length === 0 && !dataLoading && (
+        {categories.length === 0 && !dataLoading && !permissionError && (
            <div className="bg-blue-50 border border-blue-200 p-4 rounded-lg mb-6 flex items-center justify-between">
              <div className="flex items-center"><Database className="text-blue-500 mr-3" /><div><h3 className="font-bold text-blue-900">Database Empty</h3><p className="text-sm">Load default Vision Care template?</p></div></div>
              <button onClick={seedData} className="bg-blue-600 text-white font-bold py-2 px-4 rounded-lg">Load Template Data</button>
@@ -453,50 +357,10 @@ const App: React.FC = () => {
 
         <Routes>
           <Route path="/" element={<Dashboard transactions={transactions} budgets={budgets} categories={categories} budgetSources={budgetSources} />} />
-          <Route 
-            path="/budgets" 
-            element={
-              <BudgetsPage 
-                budgetSources={budgetSources} 
-                budgets={budgets} 
-                categories={categories}
-                onUpdateSource={updateBudgetSource} 
-                onUpdateBudget={updateBudget}
-              />
-            } 
-          />
-          <Route 
-            path="/transactions" 
-            element={
-              <TransactionsPage 
-                transactions={transactions} 
-                recurringTransactions={recurringTransactions}
-                categories={categories}
-                onAdd={addTransaction} 
-                onDelete={deleteTransaction} 
-                onAddRecurring={addRecurringTransaction}
-                onDeleteRecurring={deleteRecurringTransaction}
-                searchTerm={searchTerm}
-              />
-            } 
-          />
-          <Route 
-            path="/insights" 
-            element={<InsightsPage transactions={transactions} budgets={budgets} onUpdateBudget={updateBudget} />} 
-          />
-          <Route
-            path="/settings"
-            element={
-              <SettingsPage
-                categories={categories}
-                transactions={transactions}
-                budgets={budgets}
-                onAddCategory={addCategory}
-                onDeleteCategory={deleteCategory}
-                onEditCategory={editCategory}
-              />
-            }
-          />
+          <Route path="/budgets" element={<BudgetsPage budgetSources={budgetSources} budgets={budgets} categories={categories} onUpdateSource={updateBudgetSource} onUpdateBudget={updateBudget} />} />
+          <Route path="/transactions" element={<TransactionsPage transactions={transactions} recurringTransactions={recurringTransactions} categories={categories} onAdd={addTransaction} onDelete={deleteTransaction} onAddRecurring={addRecurringTransaction} onDeleteRecurring={deleteRecurringTransaction} searchTerm={searchTerm} />} />
+          <Route path="/insights" element={<InsightsPage transactions={transactions} budgets={budgets} onUpdateBudget={updateBudget} />} />
+          <Route path="/settings" element={<SettingsPage categories={categories} transactions={transactions} budgets={budgets} appSettings={appSettings} onAddCategory={addCategory} onDeleteCategory={deleteCategory} onEditCategory={editCategory} />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </Layout>

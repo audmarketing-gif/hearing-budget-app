@@ -1,12 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { Category, Transaction, Budget, TransactionType, AppSettings } from '../types';
 import { Download, Trash2, Plus, Edit2, Check, X, FolderCog, FileSpreadsheet, LogOut, UserCircle, Bell, Save, Key } from 'lucide-react';
-import { signOut, auth, doc, db, onSnapshot, setDoc } from '../services/firebase';
+import { signOut, auth, doc, db, setDoc } from '../services/firebase';
 
 interface SettingsPageProps {
   categories: Category[];
   transactions: Transaction[];
   budgets: Budget[];
+  appSettings: AppSettings | null;
   onAddCategory: (name: string, type: TransactionType, color?: string) => void;
   onDeleteCategory: (id: string) => void;
   onEditCategory: (id: string, name: string, color?: string) => void;
@@ -16,6 +17,7 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
   categories, 
   transactions, 
   budgets,
+  appSettings,
   onAddCategory,
   onDeleteCategory,
   onEditCategory
@@ -27,7 +29,7 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
   const [editName, setEditName] = useState('');
   const [editColor, setEditColor] = useState('');
 
-  // Settings State
+  // Settings State (Sync with props)
   const [alertEmail, setAlertEmail] = useState('');
   const [emailServiceId, setEmailServiceId] = useState('');
   const [emailTemplateId, setEmailTemplateId] = useState('');
@@ -37,18 +39,13 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
   const [settingsSaved, setSettingsSaved] = useState(false);
 
   useEffect(() => {
-    // Load existing settings
-    const unsub = onSnapshot(doc(db, 'settings', 'preferences'), (doc) => {
-      if (doc.exists()) {
-        const data = doc.data() as AppSettings;
-        if (data.alertEmail) setAlertEmail(data.alertEmail);
-        if (data.emailServiceId) setEmailServiceId(data.emailServiceId);
-        if (data.emailTemplateId) setEmailTemplateId(data.emailTemplateId);
-        if (data.emailPublicKey) setEmailPublicKey(data.emailPublicKey);
-      }
-    });
-    return () => unsub();
-  }, []);
+    if (appSettings) {
+      if (appSettings.alertEmail) setAlertEmail(appSettings.alertEmail);
+      if (appSettings.emailServiceId) setEmailServiceId(appSettings.emailServiceId);
+      if (appSettings.emailTemplateId) setEmailTemplateId(appSettings.emailTemplateId);
+      if (appSettings.emailPublicKey) setEmailPublicKey(appSettings.emailPublicKey);
+    }
+  }, [appSettings]);
 
   const handleSaveSettings = async () => {
     setSettingsLoading(true);
@@ -74,7 +71,7 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
     if (newCatName.trim()) {
       onAddCategory(newCatName.trim(), newCatType, newCatColor);
       setNewCatName('');
-      setNewCatColor('#64748b'); // reset to default
+      setNewCatColor('#64748b');
     }
   };
 
@@ -95,7 +92,7 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
     const headers = ["Date", "Description", "Category", "Amount", "Type"];
     const rows = transactions.map(t => [
       t.date,
-      `"${t.description.replace(/"/g, '""')}"`, // Escape quotes
+      `"${t.description.replace(/"/g, '""')}"`,
       t.category,
       t.amount.toFixed(2),
       t.type
@@ -122,7 +119,6 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
     }
   };
 
-  // Extract username from email
   const userEmail = auth?.currentUser?.email || '';
   const userName = userEmail.split('@')[0];
 
@@ -140,7 +136,6 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-        {/* Account Info */}
         <div className="bg-white p-6 rounded-xl shadow-sm border border-stone-100 h-full">
            <div className="flex items-center mb-4">
              <UserCircle className="text-blue-900 mr-2" />
@@ -150,7 +145,6 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
            <p className="font-bold text-stone-800 mt-1">{userName}</p>
         </div>
 
-        {/* Notification Settings */}
         <div className="bg-white p-6 rounded-xl shadow-sm border border-stone-100 h-full">
            <div className="flex items-center mb-4">
              <Bell className="text-amber-500 mr-2" />
@@ -220,14 +214,12 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
         </div>
       </div>
 
-      {/* Category Management */}
       <div className="bg-white p-6 rounded-xl shadow-sm border border-stone-100">
         <div className="flex items-center mb-6">
           <FolderCog className="text-emerald-600 mr-2" />
           <h2 className="text-lg font-bold text-stone-800">Manage Categories</h2>
         </div>
 
-        {/* Add Form */}
         <form onSubmit={handleAdd} className="flex flex-col md:flex-row gap-4 mb-6 p-4 bg-stone-50 rounded-lg">
           <input 
             type="text" 
@@ -262,7 +254,6 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
         </form>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-          {/* Expenses */}
           <div>
             <h3 className="text-sm font-bold text-rose-500 uppercase tracking-wider mb-3">Expenses</h3>
             <ul className="space-y-2">
@@ -302,7 +293,6 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
             </ul>
           </div>
 
-          {/* Allocations */}
           <div>
             <h3 className="text-sm font-bold text-emerald-600 uppercase tracking-wider mb-3">Allocations</h3>
             <ul className="space-y-2">
@@ -344,7 +334,6 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
         </div>
       </div>
 
-      {/* Data Management */}
       <div className="bg-white p-6 rounded-xl shadow-sm border border-stone-100">
          <div className="flex items-center mb-4">
            <FileSpreadsheet className="text-emerald-600 mr-2" />
